@@ -10,10 +10,12 @@ import org.apache.lucene.search.TermQuery;
 public class QueryBuilder {
     private final String field;
     private final String quotedField;
+    private final int defaultPhraseSlop;
 
-    public QueryBuilder(String field, String quotedField) {
+    public QueryBuilder(String field, String quotedField, int defaultPhraseSlop) {
         this.field = field;
         this.quotedField = quotedField;
+        this.defaultPhraseSlop = defaultPhraseSlop;
     }
 
     public Query termQuery(String term) {
@@ -23,11 +25,16 @@ public class QueryBuilder {
     }
 
     public Query phraseQuery(List<String> terms) {
+        return phraseQuery(terms, defaultPhraseSlop);
+    }
+
+    public Query phraseQuery(List<String> terms, int slop) {
         if (terms.size() == 1) {
             return new TermQuery(quotedTerm(terms.get(0)));
         }
         // TODO multi-field handling
         PhraseQuery pq = new PhraseQuery();
+        pq.setSlop(slop);
         // TODO multi-term queries inside of phrase queries
         for (String term : terms) {
             // TODO the right field

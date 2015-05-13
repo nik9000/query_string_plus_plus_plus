@@ -29,6 +29,7 @@ public class ParserTest {
         for (Object[] param : new Object[][] { { query("foo"), "foo" }, //
                 { query("AND"), "AND" }, //
                 { query("||"), "||" }, //
+                { query("~"), "~" }, //
                 { and("foo", "bar", "baz"), "foo bar baz" }, //
                 { or("foo", "bar"), "foo OR bar" }, //
                 { and("foo", "bar"), "foo AND bar" }, //
@@ -61,6 +62,8 @@ public class ParserTest {
                 { phrase("foo", "bar"), "\"foo bar" }, // We add the extra " if its missing
                 { and(phrase("foo", "bar"), "phrase_field:baz"), "\"foo bar\" \"baz\"" }, //
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
+                { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
+                { phrase(1, "foo", "bar"), "\"foo bar\"~1" }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
@@ -79,7 +82,7 @@ public class ParserTest {
 
     @Test
     public void parse() {
-        QueryBuilder builder = new QueryBuilder("field", "phrase_field");
+        QueryBuilder builder = new QueryBuilder("field", "phrase_field", 0);
         Query parsed = new QueryParserHelper(builder, defaultIsAnd).parse(str);
         assertEquals(expected, parsed);
     }
@@ -101,10 +104,16 @@ public class ParserTest {
         return bq;
     }
 
-    private static PhraseQuery phrase(String... terms) {
+    private static PhraseQuery phrase(Object... terms) {
         PhraseQuery pq = new PhraseQuery();
-        for (int i = 0; i < terms.length; i++) {
-            pq.add(new Term("phrase_field", terms[i]));
+        int i = 0;
+        if (terms[i] instanceof Number) {
+            pq.setSlop(((Number) terms[i++]).intValue());
+        } else {
+            pq.setSlop(0);
+        }
+        for (; i < terms.length; i++) {
+            pq.add(new Term("phrase_field", terms[i].toString()));
         }
         return pq;
     }

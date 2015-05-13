@@ -21,7 +21,6 @@ import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.QueryContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 
-
 public class QueryParserHelper {
     private final boolean defaultIsAnd;
     private final QueryBuilder builder;
@@ -33,6 +32,13 @@ public class QueryParserHelper {
 
     public Query parse(String str) {
         QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
+        // BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new
+        // ANTLRInputStream(str)));
+        // s.fill();
+        // for (Token t : s.getTokens()) {
+        // System.err.println(t);
+        // }
+
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
         // We don't want the console error listener....
         // p.removeErrorListeners();
@@ -121,7 +127,14 @@ public class QueryParserHelper {
             for (TerminalNode term : terms) {
                 text.add(term.getText().replace("\\\"", "\""));
             }
-            return new BooleanClause(builder.phraseQuery(text), null);
+            Query pq;
+            TerminalNode number = ctx.NUMBER();
+            if (number == null) {
+                pq = builder.phraseQuery(text);
+            } else {
+                pq = builder.phraseQuery(text, Integer.parseInt(number.getText(), 10));
+            }
+            return new BooleanClause(pq, null);
         }
 
         @Override

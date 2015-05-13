@@ -11,6 +11,6 @@ prefix    : must | mustNot | term;
 must      : PLUS term;
 mustNot   : MINUS term;
 term      : basicTerm | paren | phrase;
-basicTerm : TERM | OR | AND | PLUS;
+basicTerm : TERM | OR | AND | PLUS | TWIDDLE;
 paren     : LPAREN infix RPAREN;
-phrase    : QUOTE QUOTED_TERM* LQUOTE;
+phrase    : QUOTE QUOTED_TERM* LQUOTE (TWIDDLE NUMBER)?;
