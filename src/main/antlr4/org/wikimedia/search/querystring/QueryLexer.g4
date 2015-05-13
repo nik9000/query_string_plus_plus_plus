@@ -8,6 +8,7 @@ LPAREN  : '(';
 RPAREN  : ')';
 QUOTE   : '"' -> pushMode(QUOTED);
 TWIDDLE : '~';
+SLOP    : TWIDDLE NUMBER;
 
 NUMBER  : [0-9]+;
 WS      : [ \t\r\n]+ -> skip;            // skip spaces, tabs, newlines

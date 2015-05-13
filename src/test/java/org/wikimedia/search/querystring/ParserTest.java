@@ -64,6 +64,9 @@ public class ParserTest {
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
                 { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
                 { phrase(1, "foo", "bar"), "\"foo bar\"~1" }, //
+                { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, // Phrase slop is clamped to the max
+                { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
+                { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
@@ -82,7 +85,7 @@ public class ParserTest {
 
     @Test
     public void parse() {
-        QueryBuilder builder = new QueryBuilder("field", "phrase_field", 0);
+        QueryBuilder builder = QueryBuilder.builder().build("field", "phrase_field");
         Query parsed = new QueryParserHelper(builder, defaultIsAnd).parse(str);
         assertEquals(expected, parsed);
     }
@@ -113,7 +116,15 @@ public class ParserTest {
             pq.setSlop(0);
         }
         for (; i < terms.length; i++) {
-            pq.add(new Term("phrase_field", terms[i].toString()));
+            String s = terms[i].toString();
+            Term t;
+            Matcher m = Pattern.compile("(.+):(.+)").matcher(s);
+            if (m.matches()) {
+                t = new Term(m.group(1), m.group(2));
+            } else {
+                t = new Term("phrase_field", s);
+            }
+            pq.add(t);
         }
         return pq;
     }

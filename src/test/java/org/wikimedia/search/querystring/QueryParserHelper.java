@@ -5,23 +5,26 @@ import java.util.List;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
+import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
+import org.elasticsearch.common.logging.ESLogger;
+import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
+import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
-import org.wikimedia.search.querystring.QueryParser.ParenContext;
 import org.wikimedia.search.querystring.QueryParser.PhraseContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
-import org.wikimedia.search.querystring.QueryParser.QueryContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 
 public class QueryParserHelper {
+    private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
     private final boolean defaultIsAnd;
     private final QueryBuilder builder;
 
@@ -32,12 +35,13 @@ public class QueryParserHelper {
 
     public Query parse(String str) {
         QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
-        // BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new
-        // ANTLRInputStream(str)));
-        // s.fill();
-        // for (Token t : s.getTokens()) {
-        // System.err.println(t);
-        // }
+        if (log.isDebugEnabled()) {
+            BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new ANTLRInputStream(str)));
+            s.fill();
+            for (Token t : s.getTokens()) {
+                log.debug("Token:  {} {}", QueryLexer.VOCABULARY.getDisplayName(t.getType()), t.getText());
+            }
+        }
 
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
         // We don't want the console error listener....
@@ -51,10 +55,15 @@ public class QueryParserHelper {
      * override from + or - or NOT.
      */
     private class Visitor extends QueryParserBaseVisitor<BooleanClause> {
+        /**
+         * Control default aggregation of results from multi-child nodes in the
+         * parse tree. The ANTLR default is to always take the result from the
+         * last node but we switch to taking the the last <strong>non
+         * null</string> result.
+         */
         @Override
-        public BooleanClause visitQuery(QueryContext ctx) {
-            // Throw out the EOF.
-            return visit(ctx.infix());
+        protected BooleanClause aggregateResult(BooleanClause aggregate, BooleanClause nextResult) {
+            return nextResult == null ? aggregate : nextResult;
         }
 
         @Override
@@ -114,12 +123,6 @@ public class QueryParserHelper {
         }
 
         @Override
-        public BooleanClause visitParen(ParenContext ctx) {
-            // Throw out the parens
-            return visit(ctx.infix());
-        }
-
-        @Override
         public BooleanClause visitPhrase(PhraseContext ctx) {
             // TODO this isn't quite right for non-english I think.
             List<TerminalNode> terms = ctx.QUOTED_TERM();
@@ -128,19 +131,20 @@ public class QueryParserHelper {
                 text.add(term.getText().replace("\\\"", "\""));
             }
             Query pq;
-            TerminalNode number = ctx.NUMBER();
-            if (number == null) {
-                pq = builder.phraseQuery(text);
+            if (ctx.slop == null) {
+                pq = builder.phraseQuery(text, ctx.useNormalTerm == null);
             } else {
-                pq = builder.phraseQuery(text, Integer.parseInt(number.getText(), 10));
+                // The slop is the integer after the ~
+                String slop = ctx.slop.getText().substring(1);
+                pq = builder.phraseQuery(text, Integer.parseInt(slop, 10), ctx.useNormalTerm == null);
             }
             return new BooleanClause(pq, null);
         }
 
         @Override
-        public BooleanClause visitTerminal(TerminalNode node) {
+        public BooleanClause visitBasicTerm(BasicTermContext ctx) {
             // TODO a term query here is wrong but its fine for now
-            return new BooleanClause(builder.termQuery(node.getText()), null);
+            return new BooleanClause(builder.termQuery(ctx.getText()), null);
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {

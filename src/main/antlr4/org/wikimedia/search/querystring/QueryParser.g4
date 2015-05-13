@@ -13,4 +13,4 @@ mustNot   : MINUS term;
 term      : basicTerm | paren | phrase;
 basicTerm : TERM | OR | AND | PLUS | TWIDDLE;
 paren     : LPAREN infix RPAREN;
-phrase    : QUOTE QUOTED_TERM* LQUOTE (TWIDDLE NUMBER)?;
+phrase    : QUOTE QUOTED_TERM* LQUOTE (slop=SLOP)? useNormalTerm=TWIDDLE?;
