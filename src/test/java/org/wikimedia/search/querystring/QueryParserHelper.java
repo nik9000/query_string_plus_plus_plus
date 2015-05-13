@@ -46,7 +46,14 @@ public class QueryParserHelper {
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
         // We don't want the console error listener....
         // p.removeErrorListeners();
-        return new Visitor().visit(p.query()).getQuery();
+        BooleanClause c = new Visitor().visit(p.query());
+        if (c.getOccur() == Occur.MUST_NOT) {
+            // If we get a negated clause we should faithfully search for not that.
+            BooleanQuery bq = new BooleanQuery();
+            bq.add(c);
+            return bq;
+        }
+        return c.getQuery();
     }
 
     /**

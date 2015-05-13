@@ -67,6 +67,10 @@ public class ParserTest {
                 { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, // Phrase slop is clamped to the max
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
                 { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
+                { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
+                { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
+                { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
+                { and("foo", clause("phrase_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
