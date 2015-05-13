@@ -6,11 +6,15 @@ infix    : unmarked;
 unmarked : or+;
 or       : and (OR and)*;
 and      : prefix (AND prefix)*;
-prefix   : term;
-term     : TERM | OR | AND;
+prefix   : must | mustNot | term;
+must     : PLUS term;
+mustNot  : MINUS term;
+term     : TERM | OR | AND | PLUS;
 
-OR : 'OR';
-AND : 'AND';
+OR    : 'OR' | '||';
+AND   : 'AND' | '&&';
+PLUS  : '+';
+MINUS : '-' | '!' | 'NOT';
 
-TERM : ~[ \t\r\n]+;      // TERMs are just not whitespace
-WS : [ \t\r\n]+ -> skip; // skip spaces, tabs, newlines
+WS    : [ \t\r\n]+ -> skip;      // skip spaces, tabs, newlines
+TERM  : ~[ \t\r\n+\-!]~[ \t\r\n]*; // TERMs are basically everything else

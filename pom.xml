@@ -45,6 +45,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <elasticsearch.version>1.5.2</elasticsearch.version>
     <lucene.version>4.10.4</lucene.version>
+    <antlr.version>4.5</antlr.version>
   </properties>
 
   <build>
@@ -97,7 +98,7 @@
       <plugin>
         <groupId>org.antlr</groupId>
         <artifactId>antlr4-maven-plugin</artifactId>
-        <version>4.3</version>
+        <version>${antlr.version}</version>
         <executions>
           <execution>
             <id>antlr</id>
@@ -111,13 +112,6 @@
             </configuration>
           </execution>
         </executions>
-        <dependencies>
-          <dependency>
-            <groupId>org.antlr</groupId>
-            <artifactId>antlr4</artifactId>
-            <version>4.5</version>
-          </dependency>
-        </dependencies>
       </plugin>
       <plugin>
         <groupId>de.thetaphi</groupId>
@@ -314,7 +308,7 @@
     <dependency>
       <groupId>org.antlr</groupId>
       <artifactId>antlr4-runtime</artifactId>
-      <version>4.5</version>
+      <version>${antlr.version}</version>
     </dependency>
     <dependency>
       <!-- Must come before Elasticsearch dependency. -->
