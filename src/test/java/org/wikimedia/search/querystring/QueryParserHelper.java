@@ -16,6 +16,7 @@ import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
+import org.wikimedia.search.querystring.QueryParser.ParenTermContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.QueryContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
@@ -101,6 +102,12 @@ public class QueryParserHelper {
         @Override
         public BooleanClause visitMust(MustContext ctx) {
             return new BooleanClause(visit(ctx.term()).getQuery(), Occur.MUST);
+        }
+
+        @Override
+        public BooleanClause visitParenTerm(ParenTermContext ctx) {
+            // Throw out the parens
+            return visit(ctx.infix());
         }
 
         @Override

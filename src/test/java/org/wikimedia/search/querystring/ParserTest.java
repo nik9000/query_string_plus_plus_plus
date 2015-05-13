@@ -48,6 +48,9 @@ public class ParserTest {
                 { or("foo", clause("bar", Occur.MUST_NOT)), "foo NOT bar", false }, //
                 { and("foo", "bar"), "foo +bar" }, //
                 { or("foo", clause("bar", Occur.MUST)), "foo +bar", false }, //
+                { and("foo", clause(or("bar", "baz"), Occur.MUST_NOT)), "foo -(bar OR baz)" }, //
+                { or("foo", "bar", clause(and("baz", "bort"), Occur.MUST)), "foo bar +(baz AND bort)", false }, //
+                { or("foo", "bar", and("baz", "bort")), "foo bar (baz AND bort)", false }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
@@ -58,7 +61,7 @@ public class ParserTest {
     }
 
     @Parameter(0)
-    public Query query;
+    public Query expected;
     @Parameter(1)
     public String str;
     @Parameter(2)
@@ -66,7 +69,8 @@ public class ParserTest {
 
     @Test
     public void parse() {
-        assertEquals(query, new QueryParserHelper(defaultIsAnd).parse(str));
+        Query parsed = new QueryParserHelper(defaultIsAnd).parse(str);
+        assertEquals(expected, parsed);
     }
 
     private static BooleanQuery or(Object... clauses) {
