@@ -1,30 +1,33 @@
 package org.wikimedia.search.querystring;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
-import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.TermQuery;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
-import org.wikimedia.search.querystring.QueryParser.ParenTermContext;
+import org.wikimedia.search.querystring.QueryParser.ParenContext;
+import org.wikimedia.search.querystring.QueryParser.PhraseContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.QueryContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 
+
 public class QueryParserHelper {
     private final boolean defaultIsAnd;
+    private final QueryBuilder builder;
 
-    public QueryParserHelper(boolean defaultIsAnd) {
+    public QueryParserHelper(QueryBuilder builder, boolean defaultIsAnd) {
+        this.builder = builder;
         this.defaultIsAnd = defaultIsAnd;
     }
 
@@ -41,7 +44,7 @@ public class QueryParserHelper {
      * occurs means "use the default". If the Occur is set then it means an
      * override from + or - or NOT.
      */
-    private class Visitor extends QueryBaseVisitor<BooleanClause> {
+    private class Visitor extends QueryParserBaseVisitor<BooleanClause> {
         @Override
         public BooleanClause visitQuery(QueryContext ctx) {
             // Throw out the EOF.
@@ -105,14 +108,26 @@ public class QueryParserHelper {
         }
 
         @Override
-        public BooleanClause visitParenTerm(ParenTermContext ctx) {
+        public BooleanClause visitParen(ParenContext ctx) {
             // Throw out the parens
             return visit(ctx.infix());
         }
 
         @Override
+        public BooleanClause visitPhrase(PhraseContext ctx) {
+            // TODO this isn't quite right for non-english I think.
+            List<TerminalNode> terms = ctx.QUOTED_TERM();
+            List<String> text = new ArrayList<>(terms.size());
+            for (TerminalNode term : terms) {
+                text.add(term.getText().replace("\\\"", "\""));
+            }
+            return new BooleanClause(builder.phraseQuery(text), null);
+        }
+
+        @Override
         public BooleanClause visitTerminal(TerminalNode node) {
-            return new BooleanClause(new TermQuery(new Term("term", node.getText())), null);
+            // TODO a term query here is wrong but its fine for now
+            return new BooleanClause(builder.termQuery(node.getText()), null);
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {
