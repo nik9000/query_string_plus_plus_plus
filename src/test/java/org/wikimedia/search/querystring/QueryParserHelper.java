@@ -16,6 +16,7 @@ import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
+import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
@@ -142,8 +143,8 @@ public class QueryParserHelper {
                 pq = builder.phraseQuery(text, ctx.useNormalTerm == null);
             } else {
                 // The slop is the integer after the ~
-                String slop = ctx.slop.getText().substring(1);
-                pq = builder.phraseQuery(text, Integer.parseInt(slop, 10), ctx.useNormalTerm == null);
+                int slop = Integer.parseInt(ctx.slop.getText(), 10);
+                pq = builder.phraseQuery(text, slop, ctx.useNormalTerm == null);
             }
             return new BooleanClause(pq, null);
         }
@@ -152,6 +153,15 @@ public class QueryParserHelper {
         public BooleanClause visitBasicTerm(BasicTermContext ctx) {
             // TODO a term query here is wrong but its fine for now
             return new BooleanClause(builder.termQuery(ctx.getText()), null);
+        }
+
+        @Override
+        public BooleanClause visitFuzzy(FuzzyContext ctx) {
+            if (ctx.fuzziness == null) {
+                return new BooleanClause(builder.fuzzyQuery(ctx.TERM().getText()), null);
+            } else {
+                return new BooleanClause(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())), null);
+            }
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {

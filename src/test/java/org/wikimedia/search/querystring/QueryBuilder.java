@@ -5,38 +5,17 @@ import static java.lang.Math.min;
 import java.util.List;
 
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.elasticsearch.index.query.support.QueryParsers;
 
 public class QueryBuilder {
-    public static Builder builder() {
-        return new Builder();
-    }
-    public static class Builder {
-        private int defaultPhraseSlop = 0;
-        private int maxPhraseSlop = 20;
+    private final QueryBuilderSettings settings;
 
-        public QueryBuilder build(String field, String quotedField) {
-            return new QueryBuilder(field, quotedField, this);
-        }
-        public void setDefaultPhraseSlop(int defaultPhraseSlop) {
-            this.defaultPhraseSlop = defaultPhraseSlop;
-        }
-        public void setMaxPhraseSlop(int maxPhraseSlop) {
-            this.maxPhraseSlop = maxPhraseSlop;
-        }
-    }
-    private final String field;
-    private final String quotedField;
-    private final int defaultPhraseSlop;
-    private final int maxPhraseSlop;
-
-    private QueryBuilder(String field, String quotedField, Builder b) {
-        this.field = field;
-        this.quotedField = quotedField;
-        defaultPhraseSlop = b.defaultPhraseSlop;
-        maxPhraseSlop = b.maxPhraseSlop;
+    public QueryBuilder(QueryBuilderSettings settings) {
+        this.settings = settings;
     }
 
     public Query termQuery(String term) {
@@ -46,11 +25,11 @@ public class QueryBuilder {
     }
 
     public Query phraseQuery(List<String> terms, boolean useQuotedTerm) {
-        return phraseQuery(terms, defaultPhraseSlop, useQuotedTerm);
+        return phraseQuery(terms, settings.getDefaultPhraseSlop(), useQuotedTerm);
     }
 
     public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
-        slop = min(slop, maxPhraseSlop);
+        slop = min(slop, settings.getMaxPhraseSlop());
         if (terms.size() == 1) {
             return new TermQuery(quotedTerm(terms.get(0)));
         }
@@ -64,11 +43,28 @@ public class QueryBuilder {
         return pq;
     }
 
+    public Query fuzzyQuery(String term) {
+        // TODO .4? configure it.
+        return fuzzyQuery(term, .6F);
+    }
+
+    public Query fuzzyQuery(String term, float similaritySpec) {
+        @SuppressWarnings("deprecation")
+        int numEdits = FuzzyQuery.floatToEdits(similaritySpec, term.codePointCount(0, term.length()));
+        if (numEdits == 0) {
+            return termQuery(term);
+        }
+        FuzzyQuery query = new FuzzyQuery(new Term(settings.getField(), term), numEdits, settings.getFuzzyPrefixLength(),
+                settings.getFuzzyMaxExpansions(), false);
+        QueryParsers.setRewriteMethod(query, settings.getFuzzyRewriteMethod());
+        return query;
+    }
+
     public Term term(String term) {
-        return new Term(field, term);
+        return new Term(settings.getField(), term);
     }
 
     public Term quotedTerm(String term) {
-        return new Term(quotedField, term);
+        return new Term(settings.getQuotedField(), term);
     }
 }

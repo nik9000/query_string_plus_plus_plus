@@ -12,9 +12,11 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
+import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -32,7 +34,9 @@ public class ParserTest {
                 { query("~"), "~" }, //
                 { and("foo", "bar", "baz"), "foo bar baz" }, //
                 { or("foo", "bar"), "foo OR bar" }, //
+                { and("foo", "or", "bar"), "foo or bar" }, //
                 { and("foo", "bar"), "foo AND bar" }, //
+                { and("foo", "and", "bar"), "foo and bar" }, //
                 { or("foo", "bar"), "foo || bar" }, //
                 { and("foo", "bar"), "foo && bar" }, //
                 { and("foo", "bar"), "foo bar" }, //
@@ -59,18 +63,29 @@ public class ParserTest {
                 { phrase("foo", "bar"), "\"foo bar\"" }, //
                 { phrase("foo", "\"bar"), "\"foo \\\"bar\"" }, //
                 { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
-                { phrase("foo", "bar"), "\"foo bar" }, // We add the extra " if its missing
+                { phrase("foo", "bar"), "\"foo bar" }, //
                 { and(phrase("foo", "bar"), "phrase_field:baz"), "\"foo bar\" \"baz\"" }, //
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
                 { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
                 { phrase(1, "foo", "bar"), "\"foo bar\"~1" }, //
-                { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, // Phrase slop is clamped to the max
+                { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, //
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
                 { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
                 { and("foo", clause("phrase_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
+                { query("foo~1"), "foo~.4" }, //
+                { query("foo~1"), "foo~1" }, //
+                { query("foo~2"), "foo~2" }, //
+                { query("foo"), "foo~.8" }, //
+                { query("foo"), "foo~0" }, //
+                { query("fo"), "fo~" }, //
+                { query("foo~1"), "foo~" }, //
+                { query("foooo~1"), "foooo~" }, //
+                { query("fooooo~2"), "fooooo~" }, //
+                { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
+                        "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
@@ -80,6 +95,7 @@ public class ParserTest {
         return params;
     }
 
+    private static final QueryBuilderSettings settings = new QueryBuilderSettings("field", "phrase_field");
     @Parameter(0)
     public Query expected;
     @Parameter(1)
@@ -89,7 +105,7 @@ public class ParserTest {
 
     @Test
     public void parse() {
-        QueryBuilder builder = QueryBuilder.builder().build("field", "phrase_field");
+        QueryBuilder builder = new QueryBuilder(settings);
         Query parsed = new QueryParserHelper(builder, defaultIsAnd).parse(str);
         assertEquals(expected, parsed);
     }
@@ -146,11 +162,22 @@ public class ParserTest {
         }
         if (o instanceof String) {
             String s = o.toString();
+            String field = "field";
             Matcher m = Pattern.compile("(.+):(.+)").matcher(s);
             if (m.matches()) {
-                return new TermQuery(new Term(m.group(1), m.group(2)));
+                field = m.group(1);
+                s = m.group(2);
             }
-            return new TermQuery(new Term("field", s));
+            m = Pattern.compile("(.+)~(\\d+)").matcher(s);
+            if (m.matches()) {
+                s = m.group(1);
+                int edits = Integer.parseInt(m.group(2), 10);
+                FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(),
+                        settings.getFuzzyMaxExpansions(), false);
+                QueryParsers.setRewriteMethod(fq, settings.getFuzzyRewriteMethod());
+                return fq;
+            }
+            return new TermQuery(new Term(field, s));
         }
         throw new IllegalArgumentException("No idea what to do with:  " + o);
     }
