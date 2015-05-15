@@ -9,7 +9,7 @@ public class QueryBuilderSettings {
     private int defaultPhraseSlop = 0;
     private int maxPhraseSlop = 20;
     private int fuzzyPrefixLength = FuzzyQuery.defaultPrefixLength;
-    private RewriteMethod fuzzyRewriteMethod;
+    private RewriteMethod rewriteMethod;
     private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
 
     public QueryBuilderSettings(String field, String quotedField) {
@@ -41,12 +41,12 @@ public class QueryBuilderSettings {
         this.fuzzyPrefixLength = fuzzyPrefixLength;
     }
 
-    public RewriteMethod getFuzzyRewriteMethod() {
-        return fuzzyRewriteMethod;
+    public RewriteMethod getRewriteMethod() {
+        return rewriteMethod;
     }
 
-    public void setFuzzyRewriteMethod(RewriteMethod fuzzyRewriteMethod) {
-        this.fuzzyRewriteMethod = fuzzyRewriteMethod;
+    public void setRewriteMethod(RewriteMethod rewriteMethod) {
+        this.rewriteMethod = rewriteMethod;
     }
 
     public String getField() {

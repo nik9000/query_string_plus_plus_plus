@@ -8,11 +8,12 @@ LPAREN  : '(';
 RPAREN  : ')';
 QUOTE   : '"' -> pushMode(QUOTED);
 TWIDDLE : '~';
+STAR    : '*';
 
 INTEGER : [0-9]+;
 DECIMAL : (INTEGER '.'? INTEGER?) | ('.' INTEGER);
 WS      : [ \t\r\n]+ -> skip;            // skip spaces, tabs, newlines
-TERM    : ~[ \t\r\n+\-!()"~]~[ \t\r\n()"~]*; // TERMs are basically everything else
+TERM    : ~[ \t\r\n+\-!()"~*]~[ \t\r\n()"~*]*; // TERMs are basically everything else
 
 mode QUOTED;
 LQUOTE        : '"' -> popMode;

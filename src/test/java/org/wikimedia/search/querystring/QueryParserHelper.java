@@ -22,6 +22,7 @@ import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
 import org.wikimedia.search.querystring.QueryParser.PhraseContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
+import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 
 public class QueryParserHelper {
@@ -109,12 +110,12 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitAnd(AndContext ctx) {
-            List<PrefixContext> prefixes = ctx.prefix();
+            List<PrefixOpContext> prefixes = ctx.prefixOp();
             if (prefixes.size() == 1) {
                 return visit(prefixes.get(0));
             }
             BooleanQuery bq = new BooleanQuery();
-            for (PrefixContext prefix : prefixes) {
+            for (PrefixOpContext prefix : prefixes) {
                 add(bq, visit(prefix), Occur.MUST);
             }
             return new BooleanClause(bq, null);
@@ -162,6 +163,11 @@ public class QueryParserHelper {
             } else {
                 return new BooleanClause(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())), null);
             }
+        }
+
+        @Override
+        public BooleanClause visitPrefix(PrefixContext ctx) {
+            return new BooleanClause(builder.prefixQuery(ctx.TERM().getText()), null);
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {

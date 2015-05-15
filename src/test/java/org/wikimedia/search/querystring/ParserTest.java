@@ -14,6 +14,7 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.elasticsearch.index.query.support.QueryParsers;
@@ -87,6 +88,7 @@ public class ParserTest {
                 { query("fooooo~2"), "fooooo~" }, //
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
+                { query("pickl*"), "pickl*" }, //
         }) {
             if (param.length == 2) {
                 param = new Object[] { param[0], param[1], true };
@@ -175,8 +177,13 @@ public class ParserTest {
                 int edits = Integer.parseInt(m.group(2), 10);
                 FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(),
                         settings.getFuzzyMaxExpansions(), false);
-                QueryParsers.setRewriteMethod(fq, settings.getFuzzyRewriteMethod());
+                QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
                 return fq;
+            }
+            if (s.endsWith("*")) {
+                PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
+                QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
+                return pq;
             }
             return new TermQuery(new Term(field, s));
         }

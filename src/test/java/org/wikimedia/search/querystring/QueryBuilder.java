@@ -7,6 +7,7 @@ import java.util.List;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.PhraseQuery;
+import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.elasticsearch.index.query.support.QueryParsers;
@@ -56,7 +57,13 @@ public class QueryBuilder {
         }
         FuzzyQuery query = new FuzzyQuery(new Term(settings.getField(), term), numEdits, settings.getFuzzyPrefixLength(),
                 settings.getFuzzyMaxExpansions(), false);
-        QueryParsers.setRewriteMethod(query, settings.getFuzzyRewriteMethod());
+        QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
+        return query;
+    }
+
+    public Query prefixQuery(String term) {
+        PrefixQuery query = new PrefixQuery(term(term));
+        QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
     }
 
