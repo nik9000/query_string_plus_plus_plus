@@ -78,6 +78,7 @@ public class ParserTest {
                 { query("foo~1"), "foo~.4" }, //
                 { query("foo~1"), "foo~1" }, //
                 { query("foo~2"), "foo~2" }, //
+                { query("foo~2"), "foo~3" }, //
                 { query("foo"), "foo~.8" }, //
                 { query("foo"), "foo~0" }, //
                 { query("fo"), "fo~" }, //
