@@ -111,9 +111,12 @@ public class ParserTest {
                 { query("p?l"), "p?l" }, //
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
-                // Oh no, spaces.
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
-
+                // This next one is slightly different than Cirrus
+                { query("phrase_field:10.7227"), "\"10.7227\"yay\"" }, //
+                { query("phrase_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
+                { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                    "\"two words\" pickles \"ffnonesenseword catapult"}, //
         }) {
             String label;
             switch(param.length) {
@@ -185,7 +188,7 @@ public class ParserTest {
         for (; i < terms.length; i++) {
             String s = terms[i].toString();
             Term t;
-            Matcher m = Pattern.compile("(.+):(.+)").matcher(s);
+            Matcher m = FIELD_PATTERN.matcher(s);
             if (m.matches()) {
                 t = new Term(m.group(1), m.group(2));
             } else {
@@ -210,7 +213,7 @@ public class ParserTest {
         if (o instanceof String) {
             String s = o.toString();
             String field = "field";
-            Matcher m = Pattern.compile("(.+):(.+)").matcher(s);
+            Matcher m = FIELD_PATTERN.matcher(s);
             if (m.matches()) {
                 field = m.group(1);
                 s = m.group(2);
@@ -239,4 +242,6 @@ public class ParserTest {
         }
         throw new IllegalArgumentException("No idea what to do with:  " + o);
     }
+
+    private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
 }
