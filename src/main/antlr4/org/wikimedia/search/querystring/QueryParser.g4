@@ -1,18 +1,18 @@
 parser grammar QueryParser;
 options { tokenVocab=QueryLexer; }
 
-query : infixOp EOF;
-
+query     : infixOp? EOF;
 infixOp   : unmarked;
-unmarked  : or+;
-or        : and (OR and)*;
-and       : prefixOp (AND prefixOp)*;
+unmarked  : or (WS or)* WS?;
+or        : and ((WS OR WS and)|(WS? SHORT_OR WS? and))*;
+and       : prefixOp ((WS AND WS prefixOp)|(WS? SHORT_AND WS? prefixOp))*;
 prefixOp  : must | mustNot | term;
-must      : PLUS term;
-mustNot   : MINUS term;
-term      : fuzzy | prefix | basicTerm | paren | phrase;
+must      : PLUS WS? term;
+mustNot   : MINUS WS? term;
+term      : basicTerm | fuzzy | prefix | wildcard | paren | phrase;
 fuzzy     : TERM TWIDDLE fuzziness=(INTEGER | DECIMAL)?;
 prefix    : TERM STAR;
-paren     : LPAREN infixOp RPAREN;
+wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
+paren     : LPAREN WS? infixOp WS? RPAREN;
 phrase    : QUOTE QUOTED_TERM* LQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?;
-basicTerm : TERM | OR | AND | PLUS | TWIDDLE;
+basicTerm : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR;

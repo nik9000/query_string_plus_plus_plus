@@ -10,6 +10,8 @@ import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.WildcardQuery;
+import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 
 public class QueryBuilder {
@@ -65,6 +67,20 @@ public class QueryBuilder {
         PrefixQuery query = new PrefixQuery(term(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
+    }
+
+    public Query wildcardQuery(String term) {
+        WildcardQuery query = new WildcardQuery(term(term));
+        QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
+        return query;
+    }
+
+    public Query matchNone() {
+        return Queries.newMatchNoDocsQuery();
+    }
+
+    public Query matchAll() {
+        return Queries.newMatchAllQuery();
     }
 
     public Term term(String term) {

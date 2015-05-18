@@ -6,7 +6,6 @@ import java.util.List;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
 import org.antlr.v4.runtime.Token;
-import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -24,19 +23,21 @@ import org.wikimedia.search.querystring.QueryParser.PhraseContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
+import org.wikimedia.search.querystring.QueryParser.WildcardContext;
 
 public class QueryParserHelper {
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
     private final boolean defaultIsAnd;
+    private final boolean emptyIsMatchAll;
     private final QueryBuilder builder;
 
-    public QueryParserHelper(QueryBuilder builder, boolean defaultIsAnd) {
+    public QueryParserHelper(QueryBuilder builder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
         this.builder = builder;
         this.defaultIsAnd = defaultIsAnd;
+        this.emptyIsMatchAll = emptyIsMatchAll;
     }
 
     public Query parse(String str) {
-        QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
         if (log.isDebugEnabled()) {
             BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new ANTLRInputStream(str)));
             s.fill();
@@ -45,10 +46,18 @@ public class QueryParserHelper {
             }
         }
 
+        QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
         // We don't want the console error listener....
         // p.removeErrorListeners();
+        if (log.isTraceEnabled()) {
+            p.addParseListener(new TraceParseTreeListener(p));
+        }
         BooleanClause c = new Visitor().visit(p.query());
+        if (c == null) {
+            // We've just parsed an empty query
+            return emptyIsMatchAll ? builder.matchAll() : builder.matchNone();
+        }
         if (c.getOccur() == Occur.MUST_NOT) {
             // If we get a negated clause we should faithfully search for not that.
             BooleanQuery bq = new BooleanQuery();
@@ -77,7 +86,8 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitUnmarked(UnmarkedContext ctx) {
-            if (ctx.getChildCount() == 1) {
+            List<OrContext> ors = ctx.or();
+            if (ors.size() == 1) {
                 return visit(ctx.getChild(0));
             }
             BooleanQuery bq = new BooleanQuery();
@@ -88,8 +98,8 @@ public class QueryParserHelper {
                 bq.setMinimumNumberShouldMatch(1);
                 defaultOccur = Occur.SHOULD;
             }
-            for (ParseTree and : ctx.children) {
-                add(bq, visit(and), defaultOccur);
+            for (OrContext or : ors) {
+                add(bq, visit(or), defaultOccur);
             }
             return new BooleanClause(bq, null);
         }
@@ -168,6 +178,11 @@ public class QueryParserHelper {
         @Override
         public BooleanClause visitPrefix(PrefixContext ctx) {
             return new BooleanClause(builder.prefixQuery(ctx.TERM().getText()), null);
+        }
+
+        @Override
+        public BooleanClause visitWildcard(WildcardContext ctx) {
+            return new BooleanClause(builder.wildcardQuery(ctx.getText()), null);
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {

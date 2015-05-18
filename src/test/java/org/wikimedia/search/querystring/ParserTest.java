@@ -3,8 +3,10 @@ package org.wikimedia.search.querystring;
 import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,6 +19,8 @@ import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.apache.lucene.search.WildcardQuery;
+import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -26,20 +30,29 @@ import org.junit.runners.Parameterized.Parameters;
 
 @RunWith(Parameterized.class)
 public class ParserTest {
-    @Parameters(name = "\"{1}\" {2}")
+    @Parameters(name = "{0}")
     public static Collection<Object[]> params() {
         List<Object[]> params = new ArrayList<>();
         for (Object[] param : new Object[][] { { query("foo"), "foo" }, //
+                { query("foo"), "foo   " }, //
+                { Queries.newMatchAllQuery(), "" }, //
+                { Queries.newMatchAllQuery(), "   " }, //
+                { Queries.newMatchNoDocsQuery(), "", true, false }, //
+                { Queries.newMatchNoDocsQuery(), "   ", true, false }, //
                 { query("AND"), "AND" }, //
                 { query("||"), "||" }, //
                 { query("~"), "~" }, //
+                { query("+"), "+" }, //
+                { query("-"), "-" }, //
                 { and("foo", "bar", "baz"), "foo bar baz" }, //
                 { or("foo", "bar"), "foo OR bar" }, //
                 { and("foo", "or", "bar"), "foo or bar" }, //
                 { and("foo", "bar"), "foo AND bar" }, //
                 { and("foo", "and", "bar"), "foo and bar" }, //
                 { or("foo", "bar"), "foo || bar" }, //
+                { or("foo", "bar"), "foo||bar" }, //
                 { and("foo", "bar"), "foo && bar" }, //
+                { and("foo", "bar"), "foo&&bar" }, //
                 { and("foo", "bar"), "foo bar" }, //
                 { and("foo", "OR"), "foo OR" }, //
                 { and("foo", "AND"), "foo AND" }, //
@@ -59,6 +72,7 @@ public class ParserTest {
                 { and("foo", "bar"), "foo +bar" }, //
                 { or("foo", clause("bar", Occur.MUST)), "foo +bar", false }, //
                 { and("foo", clause(or("bar", "baz"), Occur.MUST_NOT)), "foo -(bar OR baz)" }, //
+                { and("foo", clause(or("bar", "baz"), Occur.MUST_NOT)), "foo -( bar OR baz )" }, //
                 { or("foo", "bar", clause(and("baz", "bort"), Occur.MUST)), "foo bar +(baz AND bort)", false }, //
                 { or("foo", "bar", and("baz", "bort")), "foo bar (baz AND bort)", false }, //
                 { phrase("foo", "bar"), "\"foo bar\"" }, //
@@ -79,6 +93,7 @@ public class ParserTest {
                 { query("foo~1"), "foo~.4" }, //
                 { query("foo~1"), "foo~1" }, //
                 { query("foo~2"), "foo~2" }, //
+                { and("foo~1", "bar"), "foo~ bar" }, //
                 { query("foo~2"), "foo~3" }, //
                 { query("foo"), "foo~.8" }, //
                 { query("foo"), "foo~0" }, //
@@ -89,10 +104,35 @@ public class ParserTest {
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
                 { query("pickl*"), "pickl*" }, //
+                { and("pickl" , "*"), "pickl *" }, //
+                { query("pickl?"), "pickl?" }, //
+                { query("pic???"), "pic???" }, //
+                { query("???"), "???" }, //
+                { query("p?l"), "p?l" }, //
+                { query("pi*kl?"), "pi*kl?" }, //
+                { query("pi\\*kl?"), "pi\\*kl?" }, //
+                // Oh no, spaces.
+                { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
+
         }) {
-            if (param.length == 2) {
-                param = new Object[] { param[0], param[1], true };
+            String label;
+            switch(param.length) {
+            case 2:
+                label = param[1].toString();
+                param = new Object[] { null, param[0], param[1], true, true };
+                break;
+            case 3:
+                label = String.format(Locale.ROOT, "\"%s\" %s", param[1], param[2]);
+                param = new Object[] { null, param[0], param[1], param[2], true };
+                break;
+            case 4:
+                label = String.format(Locale.ROOT, "\"%s\" %s %s", param[1], param[2], param[3]);
+                param = new Object[] { null, param[0], param[1], param[2], param[3] };
+                break;
+            default:
+                throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
+            param[0] = label;
             params.add(param);
         }
         return params;
@@ -100,16 +140,20 @@ public class ParserTest {
 
     private static final QueryBuilderSettings settings = new QueryBuilderSettings("field", "phrase_field");
     @Parameter(0)
-    public Query expected;
+    public String label;
     @Parameter(1)
-    public String str;
+    public Query expected;
     @Parameter(2)
+    public String str;
+    @Parameter(3)
     public boolean defaultIsAnd;
+    @Parameter(4)
+    public boolean emptyIsMatchAll;
 
     @Test
     public void parse() {
         QueryBuilder builder = new QueryBuilder(settings);
-        Query parsed = new QueryParserHelper(builder, defaultIsAnd).parse(str);
+        Query parsed = new QueryParserHelper(builder, defaultIsAnd, emptyIsMatchAll).parse(str);
         assertEquals(expected, parsed);
     }
 
@@ -180,7 +224,13 @@ public class ParserTest {
                 QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
                 return fq;
             }
-            if (s.endsWith("*")) {
+            if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
+                WildcardQuery wq = new WildcardQuery(new Term(field, s));
+                QueryParsers.setRewriteMethod(wq, settings.getRewriteMethod());
+                return wq;
+
+            }
+            if (s.length() > 1 && s.endsWith("*")) {
                 PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
                 QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
                 return pq;

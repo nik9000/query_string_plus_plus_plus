@@ -312,6 +312,7 @@
       <groupId>org.antlr</groupId>
       <artifactId>antlr4-runtime</artifactId>
       <version>${antlr.version}</version>
+      <!-- TODO this must be shaded -->
     </dependency>
     <dependency>
       <!-- Must come before Elasticsearch dependency. -->
