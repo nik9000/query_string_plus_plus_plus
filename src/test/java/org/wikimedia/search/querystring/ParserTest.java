@@ -28,6 +28,9 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 
+/**
+ * Tests that the parser builds the right queries.
+ */
 @RunWith(Parameterized.class)
 public class ParserTest {
     @Parameters(name = "{0}")
