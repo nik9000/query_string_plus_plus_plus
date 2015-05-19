@@ -1,12 +1,15 @@
 package org.wikimedia.search.querystring;
 
+import static org.elasticsearch.common.collect.Maps.newHashMap;
 import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,6 +23,8 @@ import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.elasticsearch.common.base.Splitter;
+import org.elasticsearch.common.collect.ImmutableList;
 import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
@@ -30,6 +35,7 @@ import org.junit.runners.Parameterized.Parameters;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
+import org.wikimedia.search.querystring.query.MultiFieldQueryBuilder;
 import org.wikimedia.search.querystring.query.SingleFieldQueryBuilder;
 
 /**
@@ -45,8 +51,8 @@ public class ParserTest {
                 { query("foo"), "foo   " }, //
                 { Queries.newMatchAllQuery(), "" }, //
                 { Queries.newMatchAllQuery(), "   " }, //
-                { Queries.newMatchNoDocsQuery(), "", true, false }, //
-                { Queries.newMatchNoDocsQuery(), "   ", true, false }, //
+                { Queries.newMatchNoDocsQuery(), "", "empty=matchNone" }, //
+                { Queries.newMatchNoDocsQuery(), "   ", "empty=matchNone" }, //
                 { query("AND"), "AND" }, //
                 { query("||"), "||" }, //
                 { query("~"), "~" }, //
@@ -68,21 +74,21 @@ public class ParserTest {
                 { and("foo", "bar", "baz"), "foo AND bar AND baz" }, //
                 { or(and("foo", "bar"), "baz"), "foo AND bar OR baz" }, //
                 { and("foo", or("bar", "baz")), "foo bar OR baz" }, //
-                { or("foo", or("bar", "baz")), "foo bar OR baz", false }, //
+                { or("foo", or("bar", "baz")), "foo bar OR baz", "default=or" }, //
                 { and("foo", clause("bar", Occur.MUST_NOT)), "foo -bar" }, //
                 { and("foo", clause("bar", Occur.MUST_NOT)), "foo !bar" }, //
                 { and("foo", clause("bar", Occur.MUST_NOT)), "foo - bar" }, //
                 { and("foo", clause("bar", Occur.MUST_NOT)), "foo ! bar" }, //
                 { and("foo", clause("bar", Occur.MUST_NOT)), "foo NOT bar" }, //
-                { or("foo", clause("bar", Occur.MUST_NOT)), "foo -bar", false }, //
-                { or("foo", clause("bar", Occur.MUST_NOT)), "foo !bar", false }, //
-                { or("foo", clause("bar", Occur.MUST_NOT)), "foo NOT bar", false }, //
+                { or("foo", clause("bar", Occur.MUST_NOT)), "foo -bar", "default=or" }, //
+                { or("foo", clause("bar", Occur.MUST_NOT)), "foo !bar", "default=or" }, //
+                { or("foo", clause("bar", Occur.MUST_NOT)), "foo NOT bar", "default=or" }, //
                 { and("foo", "bar"), "foo +bar" }, //
-                { or("foo", clause("bar", Occur.MUST)), "foo +bar", false }, //
+                { or("foo", clause("bar", Occur.MUST)), "foo +bar", "default=or" }, //
                 { and("foo", clause(or("bar", "baz"), Occur.MUST_NOT)), "foo -(bar OR baz)" }, //
                 { and("foo", clause(or("bar", "baz"), Occur.MUST_NOT)), "foo -( bar OR baz )" }, //
-                { or("foo", "bar", clause(and("baz", "bort"), Occur.MUST)), "foo bar +(baz AND bort)", false }, //
-                { or("foo", "bar", and("baz", "bort")), "foo bar (baz AND bort)", false }, //
+                { or("foo", "bar", clause(and("baz", "bort"), Occur.MUST)), "foo bar +(baz AND bort)", "default=or" }, //
+                { or("foo", "bar", and("baz", "bort")), "foo bar (baz AND bort)", "default=or" }, //
                 { phrase("foo", "bar"), "\"foo bar\"" }, //
                 { phrase("foo", "\"bar"), "\"foo \\\"bar\"" }, //
                 { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
@@ -131,26 +137,56 @@ public class ParserTest {
                         "\"two words\" OR pickles OR \"ffnonesenseword catapult\"" }, //
                 // The next one is also different than Cirrus
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~garbage" }, //
+                { or("a:foo", "b:foo"), "foo", "fields=a|b" }, //
+                { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
+                { or(phrase("phrase_a:foo", "phrase_a:bar"), phrase("phrase_b:foo", "phrase_b:bar")), "\"foo bar\"", "fields=a|b" }, //
+                { and(or("phrase_a:foo", "phrase_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
         }) {
+            Query expected = (Query) param[0];
+            String toParse = param[1].toString();
+            boolean defaultIsAnd = true;
+            boolean emptyIsMatchAll = true;
+            List<String> fields = Collections.singletonList("field");
             String label;
             switch (param.length) {
             case 2:
-                label = param[1].toString();
-                param = new Object[] { null, param[0], param[1], true, true };
+                label = toParse;
                 break;
             case 3:
-                label = String.format(Locale.ROOT, "\"%s\" %s", param[1], param[2]);
-                param = new Object[] { null, param[0], param[1], param[2], true };
-                break;
-            case 4:
-                label = String.format(Locale.ROOT, "\"%s\" %s %s", param[1], param[2], param[3]);
-                param = new Object[] { null, param[0], param[1], param[2], param[3] };
+                label = String.format(Locale.ROOT, "\"%s\" with %s", param[1], param[2]);
+                Map<String, String> settings = newHashMap(Splitter.on(',').trimResults().withKeyValueSeparator('=')
+                        .split(param[2].toString()));
+                String newDefault = settings.remove("default");
+                if (newDefault != null) {
+                    if (newDefault.equals("or")) {
+                        defaultIsAnd = false;
+                    } else {
+                        throw new RuntimeException("Invalid default operation:  " + newDefault);
+                    }
+                }
+                String newEmpty = settings.remove("empty");
+                if (newEmpty != null) {
+                    if (newEmpty.equals("matchNone")) {
+                        emptyIsMatchAll = false;
+                    } else {
+                        throw new RuntimeException("Invalid empty operation:  " + newEmpty);
+                    }
+                }
+                String newFields = settings.remove("fields");
+                if (newFields != null) {
+                    fields = ImmutableList.copyOf(Splitter.on('|').split(newFields));
+                    if (fields.size() == 0) {
+                        throw new RuntimeException("Fields cannot be empty");
+                    }
+                }
+                if (!settings.isEmpty()) {
+                    throw new RuntimeException("Invalid example settings: " + param[2]);
+                }
                 break;
             default:
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
-            param[0] = label;
-            params.add(param);
+            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields });
         }
         return params;
     }
@@ -167,13 +203,31 @@ public class ParserTest {
     public boolean defaultIsAnd;
     @Parameter(4)
     public boolean emptyIsMatchAll;
+    @Parameter(5)
+    public List<String> fields;
 
     @Test
     public void parse() {
-        BasicQueryBuilder basicBuilder = new BasicQueryBuilder(new SingleFieldQueryBuilder("field", "phrase_field", settings));
-        DefaultingQueryBuilder builder = new DefaultingQueryBuilder(defaultSettings, basicBuilder);
-        Query parsed = new QueryParserHelper(builder, defaultIsAnd, emptyIsMatchAll).parse(str);
+        Query parsed = new QueryParserHelper(builder(), defaultIsAnd, emptyIsMatchAll).parse(str);
         assertEquals(expected, parsed);
+    }
+
+    private DefaultingQueryBuilder builder() {
+        FieldQueryBuilder fieldBuilder;
+        if (fields.size() == 1) {
+            fieldBuilder = fieldQueryBuilder(fields.get(0));
+        } else {
+            List<FieldQueryBuilder> fieldBuilders = new ArrayList<>();
+            for (String field : fields) {
+                fieldBuilders.add(fieldQueryBuilder(field));
+            }
+            fieldBuilder = new MultiFieldQueryBuilder(fieldBuilders);
+        }
+        return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(fieldBuilder));
+    }
+
+    private FieldQueryBuilder fieldQueryBuilder(String field) {
+        return new SingleFieldQueryBuilder(field, "phrase_" + field, settings);
     }
 
     private static BooleanQuery or(Object... clauses) {
