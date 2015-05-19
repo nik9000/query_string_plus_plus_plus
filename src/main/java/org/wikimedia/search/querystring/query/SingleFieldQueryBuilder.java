@@ -1,4 +1,4 @@
-package org.wikimedia.search.querystring;
+package org.wikimedia.search.querystring.query;
 
 import static java.lang.Math.min;
 
@@ -11,26 +11,25 @@ import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
-import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 
-public class QueryBuilder {
-    private final QueryBuilderSettings settings;
+public class SingleFieldQueryBuilder implements FieldQueryBuilder {
+    private final String field;
+    private final String quotedField;
+    private final Settings settings;
 
-    public QueryBuilder(QueryBuilderSettings settings) {
+    public SingleFieldQueryBuilder(String field, String quotedField, Settings settings) {
+        this.field = field;
+        this.quotedField = quotedField;
         this.settings = settings;
     }
 
+    @Override
     public Query termQuery(String term) {
-        // TODO multi-term handling
-        // TODO multi-field handling
         return new TermQuery(term(term));
     }
 
-    public Query phraseQuery(List<String> terms, boolean useQuotedTerm) {
-        return phraseQuery(terms, settings.getDefaultPhraseSlop(), useQuotedTerm);
-    }
-
+    @Override
     public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
         slop = min(slop, settings.getMaxPhraseSlop());
         if (terms.size() == 1) {
@@ -46,48 +45,38 @@ public class QueryBuilder {
         return pq;
     }
 
-    public Query fuzzyQuery(String term) {
-        // TODO .4? configure it.
-        return fuzzyQuery(term, .6F);
-    }
-
+    @Override
     public Query fuzzyQuery(String term, float similaritySpec) {
         @SuppressWarnings("deprecation")
         int numEdits = FuzzyQuery.floatToEdits(similaritySpec, term.codePointCount(0, term.length()));
         if (numEdits == 0) {
             return termQuery(term);
         }
-        FuzzyQuery query = new FuzzyQuery(new Term(settings.getField(), term), numEdits, settings.getFuzzyPrefixLength(),
+        FuzzyQuery query = new FuzzyQuery(term(term), numEdits, settings.getFuzzyPrefixLength(),
                 settings.getFuzzyMaxExpansions(), false);
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
     }
 
+    @Override
     public Query prefixQuery(String term) {
         PrefixQuery query = new PrefixQuery(term(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
     }
 
+    @Override
     public Query wildcardQuery(String term) {
         WildcardQuery query = new WildcardQuery(term(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
     }
 
-    public Query matchNone() {
-        return Queries.newMatchNoDocsQuery();
-    }
-
-    public Query matchAll() {
-        return Queries.newMatchAllQuery();
-    }
-
     public Term term(String term) {
-        return new Term(settings.getField(), term);
+        return new Term(field, term);
     }
 
     public Term quotedTerm(String term) {
-        return new Term(settings.getQuotedField(), term);
+        return new Term(quotedField, term);
     }
 }

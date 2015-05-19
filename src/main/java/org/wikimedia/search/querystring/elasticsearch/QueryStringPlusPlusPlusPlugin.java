@@ -18,7 +18,6 @@ public class QueryStringPlusPlusPlusPlugin extends AbstractPlugin {
     /**
      * Register our parser.
      */
-    @SuppressWarnings("unchecked")
     public void onModule(IndicesQueriesModule module) {
         module.addQuery(new QueryStringPlusPlusPlusParser());
     }

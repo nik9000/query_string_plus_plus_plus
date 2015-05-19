@@ -27,6 +27,10 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
+import org.wikimedia.search.querystring.query.BasicQueryBuilder;
+import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldQueryBuilder;
+import org.wikimedia.search.querystring.query.SingleFieldQueryBuilder;
 
 /**
  * Tests that the parser builds the right queries.
@@ -151,7 +155,8 @@ public class ParserTest {
         return params;
     }
 
-    private static final QueryBuilderSettings settings = new QueryBuilderSettings("field", "phrase_field");
+    private static final DefaultingQueryBuilder.Settings defaultSettings = new DefaultingQueryBuilder.Settings();
+    private static final FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
     @Parameter(0)
     public String label;
     @Parameter(1)
@@ -165,7 +170,8 @@ public class ParserTest {
 
     @Test
     public void parse() {
-        QueryBuilder builder = new QueryBuilder(settings);
+        BasicQueryBuilder basicBuilder = new BasicQueryBuilder(new SingleFieldQueryBuilder("field", "phrase_field", settings));
+        DefaultingQueryBuilder builder = new DefaultingQueryBuilder(defaultSettings, basicBuilder);
         Query parsed = new QueryParserHelper(builder, defaultIsAnd, emptyIsMatchAll).parse(str);
         assertEquals(expected, parsed);
     }

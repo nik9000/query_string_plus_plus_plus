@@ -13,9 +13,6 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
-import org.wikimedia.search.querystring.QueryLexer;
-import org.wikimedia.search.querystring.QueryParser;
-import org.wikimedia.search.querystring.QueryParserBaseVisitor;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
 import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
@@ -27,14 +24,15 @@ import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 import org.wikimedia.search.querystring.QueryParser.WildcardContext;
+import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 
 public class QueryParserHelper {
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
     private final boolean defaultIsAnd;
     private final boolean emptyIsMatchAll;
-    private final QueryBuilder builder;
+    private final DefaultingQueryBuilder builder;
 
-    public QueryParserHelper(QueryBuilder builder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
+    public QueryParserHelper(DefaultingQueryBuilder builder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
         this.builder = builder;
         this.defaultIsAnd = defaultIsAnd;
         this.emptyIsMatchAll = emptyIsMatchAll;
