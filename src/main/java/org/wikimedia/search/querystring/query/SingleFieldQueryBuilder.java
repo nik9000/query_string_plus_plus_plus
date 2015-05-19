@@ -35,7 +35,6 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         if (terms.size() == 1) {
             return new TermQuery(quotedTerm(terms.get(0)));
         }
-        // TODO multi-field handling
         PhraseQuery pq = new PhraseQuery();
         pq.setSlop(slop);
         // TODO multi-term queries inside of phrase queries
