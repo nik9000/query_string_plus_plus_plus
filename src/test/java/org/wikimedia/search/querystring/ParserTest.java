@@ -33,7 +33,8 @@ public class ParserTest {
     @Parameters(name = "{0}")
     public static Collection<Object[]> params() {
         List<Object[]> params = new ArrayList<>();
-        for (Object[] param : new Object[][] { { query("foo"), "foo" }, //
+        for (Object[] param : new Object[][] {
+                { query("foo"), "foo" }, //
                 { query("foo"), "foo   " }, //
                 { Queries.newMatchAllQuery(), "" }, //
                 { Queries.newMatchAllQuery(), "   " }, //
@@ -104,7 +105,7 @@ public class ParserTest {
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
                 { query("pickl*"), "pickl*" }, //
-                { and("pickl" , "*"), "pickl *" }, //
+                { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
                 { query("???"), "???" }, //
@@ -116,10 +117,16 @@ public class ParserTest {
                 { query("phrase_field:10.7227"), "\"10.7227\"yay\"" }, //
                 { query("phrase_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
                 { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
-                    "\"two words\" pickles \"ffnonesenseword catapult"}, //
+                        "\"two words\" pickles \"ffnonesenseword catapult" }, //
+                { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                        "\"two words\" AND pickles AND \"ffnonesenseword catapult\"" }, //
+                { or(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                        "\"two words\" OR pickles OR \"ffnonesenseword catapult\"" }, //
+                // The next one is also different than Cirrus
+                { phrase("field:foo", "field:bar"), "\"foo bar\"~garbage" }, //
         }) {
             String label;
-            switch(param.length) {
+            switch (param.length) {
             case 2:
                 label = param[1].toString();
                 param = new Object[] { null, param[0], param[1], true, true };
