@@ -147,6 +147,10 @@ public class ParserTest {
                 { and("foo^cat", "bar"), "foo^cat bar" }, //
                 { and("another_field:foo", "bar"), "another_field:foo bar" }, //
                 { and("another.field:foo", "bar"), "another.field:foo bar" }, //
+                { and("another:foo^2", "bar"), "another^2:foo bar" }, //
+                { and(or("another:foo", "andAnother:foo"), "bar"), "another,andAnother:foo bar" }, //
+                // The next one is totally valid but confusing looking
+                { and(or("another:foo", "andAnother:foo"), "bar"), "another, andAnother:foo bar" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
