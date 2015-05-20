@@ -14,11 +14,13 @@ STAR      : '*';
 QUESTM    : '?';
 CARET     : '^';
 DOT       : '.';
+COLON     : ':';
+COMMA     : ',';
 
 INTEGER   : [0-9]+;
 DECIMAL   : INTEGER? '.'? INTEGER;
 WS        : [ \t\r\n]+;
-TERM      : ~[ \t\r\n+\-!()"~*?|&^]~[ \t\r\n()"~*?|&^]*; // TERMs are basically everything else
+TERM      : ~[ \t\r\n+\-!()"~*?|&^:]~[ \t\r\n()"~*?|&^:]*; // TERMs are basically everything else
 
 mode QUOTED;
 LQUOTE        : '"' -> popMode;

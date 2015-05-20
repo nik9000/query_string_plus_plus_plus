@@ -1,5 +1,6 @@
 package org.wikimedia.search.querystring.query;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.lucene.search.Query;
@@ -10,9 +11,24 @@ import org.elasticsearch.common.lucene.search.Queries;
  */
 public class BasicQueryBuilder implements QueryBuilder {
     private final FieldQueryBuilder fieldQueryBuilder;
+    private final FieldQueryBuilder.Settings fieldQuerySettings;
 
-    public BasicQueryBuilder(FieldQueryBuilder fieldQueryBuilder) {
-        this.fieldQueryBuilder = fieldQueryBuilder;
+    public BasicQueryBuilder(FieldQueryBuilder.Settings fieldQuerySettings, List<FieldDefinition> fields) {
+        this.fieldQuerySettings = fieldQuerySettings;
+        if (fields.size() == 1) {
+            fieldQueryBuilder = buildFieldQueryBuilder(fields.get(0));
+        } else {
+            List<FieldQueryBuilder> fieldBuilders = new ArrayList<>();
+            for (FieldDefinition field : fields) {
+                fieldBuilders.add(buildFieldQueryBuilder(field));
+            }
+            fieldQueryBuilder = new MultiFieldQueryBuilder(fieldBuilders);
+        }
+    }
+
+    @Override
+    public QueryBuilder forFields(List<FieldDefinition> fields) {
+        return new BasicQueryBuilder(fieldQuerySettings, fields);
     }
 
     @Override
@@ -48,5 +64,16 @@ public class BasicQueryBuilder implements QueryBuilder {
     @Override
     public Query wildcardQuery(String term) {
         return fieldQueryBuilder.wildcardQuery(term);
+    }
+
+    /**
+     * Builds the field queries based on field definitions.
+     */
+    private FieldQueryBuilder buildFieldQueryBuilder(FieldDefinition field) {
+        FieldQueryBuilder b = new SingleFieldQueryBuilder(field.getField(), field.getPhraseField(), fieldQuerySettings);
+        if (field.getBoost() != 1) {
+            b = new BoostingFieldQueryBuilder(b, field.getBoost());
+        }
+        return b;
     }
 }

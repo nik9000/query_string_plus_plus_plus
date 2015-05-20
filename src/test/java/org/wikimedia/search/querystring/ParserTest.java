@@ -33,11 +33,9 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
-import org.wikimedia.search.querystring.query.BoostingFieldQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
-import org.wikimedia.search.querystring.query.MultiFieldQueryBuilder;
-import org.wikimedia.search.querystring.query.SingleFieldQueryBuilder;
 
 /**
  * Tests that the parser builds the right queries.
@@ -147,6 +145,8 @@ public class ParserTest {
                 { and("foo^5", "bar"), "foo^5 bar" }, //
                 { and("foo^5.1", "bar"), "foo^5.1 bar" }, //
                 { and("foo^cat", "bar"), "foo^cat bar" }, //
+                { and("another_field:foo", "bar"), "another_field:foo bar" }, //
+                { and("another.field:foo", "bar"), "another.field:foo bar" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -219,31 +219,21 @@ public class ParserTest {
     }
 
     private DefaultingQueryBuilder builder() {
-        FieldQueryBuilder fieldBuilder;
-        if (fields.size() == 1) {
-            fieldBuilder = fieldQueryBuilder(fields.get(0));
-        } else {
-            List<FieldQueryBuilder> fieldBuilders = new ArrayList<>();
-            for (String field : fields) {
-                fieldBuilders.add(fieldQueryBuilder(field));
-            }
-            fieldBuilder = new MultiFieldQueryBuilder(fieldBuilders);
+        List<FieldDefinition> fieldDefinitions = new ArrayList<>();
+        for (String field : fields) {
+            fieldDefinitions.add(fieldDefinition(field));
         }
-        return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(fieldBuilder));
+        return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(settings, fieldDefinitions));
     }
 
-    private FieldQueryBuilder fieldQueryBuilder(String field) {
+    private FieldDefinition fieldDefinition(String field) {
         Matcher m = BOOST_PATTERN.matcher(field);
         float boost = 1;
         if (m.matches()) {
             field = m.group(1);
             boost = Float.parseFloat(m.group(2));
         }
-        FieldQueryBuilder b = new SingleFieldQueryBuilder(field, "phrase_" + field, settings);
-        if (boost != 1) {
-            b = new BoostingFieldQueryBuilder(b, boost);
-        }
-        return b;
+        return  new FieldDefinition(field, "phrase_" + field, boost);
     }
 
     private static BooleanQuery or(Object... clauses) {
@@ -322,8 +312,8 @@ public class ParserTest {
         if (m.matches()) {
             s = m.group(1);
             int edits = Integer.parseInt(m.group(2), 10);
-            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(),
-                    settings.getFuzzyMaxExpansions(), false);
+            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(), settings.getFuzzyMaxExpansions(),
+                    false);
             QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
             return fq;
         }

@@ -46,6 +46,14 @@ public class DefaultingQueryBuilder implements QueryBuilder {
         return phraseQuery(terms, settings.phraseSlop, useQuotedTerm);
     }
 
+    /**
+     * Creates a copy of this builder that uses the passed in fields.
+     */
+    @Override
+    public DefaultingQueryBuilder forFields(List<FieldDefinition> fields) {
+        return new DefaultingQueryBuilder(settings, delegate.forFields(fields));
+    }
+
     // These are all auto-generated and just delegate to delegate
     @Override
     public Query termQuery(String term) {

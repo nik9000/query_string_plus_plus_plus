@@ -16,6 +16,9 @@ import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
 import org.wikimedia.search.querystring.QueryParser.BoostedContext;
+import org.wikimedia.search.querystring.QueryParser.FieldContext;
+import org.wikimedia.search.querystring.QueryParser.FieldedContext;
+import org.wikimedia.search.querystring.QueryParser.FieldsContext;
 import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
@@ -26,15 +29,22 @@ import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 import org.wikimedia.search.querystring.QueryParser.WildcardContext;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldDefinition;
 
 public class QueryParserHelper {
+    public static List<FieldDefinition> parseFields(String str) {
+        QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
+        QueryParser p = new QueryParser(new BufferedTokenStream(l));
+        return fieldsFromContext(p.fields());
+    }
+
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
     private final boolean defaultIsAnd;
     private final boolean emptyIsMatchAll;
-    private final DefaultingQueryBuilder builder;
+    private final DefaultingQueryBuilder rootBuilder;
 
-    public QueryParserHelper(DefaultingQueryBuilder builder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
-        this.builder = builder;
+    public QueryParserHelper(DefaultingQueryBuilder rootBuilder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
+        this.rootBuilder = rootBuilder;
         this.defaultIsAnd = defaultIsAnd;
         this.emptyIsMatchAll = emptyIsMatchAll;
     }
@@ -58,10 +68,11 @@ public class QueryParserHelper {
         BooleanClause c = new Visitor().visit(p.query());
         if (c == null) {
             // We've just parsed an empty query
-            return emptyIsMatchAll ? builder.matchAll() : builder.matchNone();
+            return emptyIsMatchAll ? rootBuilder.matchAll() : rootBuilder.matchNone();
         }
         if (c.getOccur() == Occur.MUST_NOT) {
-            // If we get a negated clause we should faithfully search for not that.
+            // If we get a negated clause we should faithfully search for not
+            // that.
             BooleanQuery bq = new BooleanQuery();
             bq.add(c);
             return bq;
@@ -75,6 +86,12 @@ public class QueryParserHelper {
      * override from + or - or NOT.
      */
     private class Visitor extends QueryParserBaseVisitor<BooleanClause> {
+        private DefaultingQueryBuilder builder;
+
+        public Visitor() {
+            builder = rootBuilder;
+        }
+
         /**
          * Control default aggregation of results from multi-child nodes in the
          * parse tree. The ANTLR default is to always take the result from the
@@ -135,12 +152,27 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitMustNot(MustNotContext ctx) {
-            return new BooleanClause(visit(ctx.boosted()).getQuery(), Occur.MUST_NOT);
+            return new BooleanClause(visit(ctx.fielded()).getQuery(), Occur.MUST_NOT);
         }
 
         @Override
         public BooleanClause visitMust(MustContext ctx) {
-            return new BooleanClause(visit(ctx.boosted()).getQuery(), Occur.MUST);
+            return new BooleanClause(visit(ctx.fielded()).getQuery(), Occur.MUST);
+        }
+
+        @Override
+        public BooleanClause visitFielded(FieldedContext ctx) {
+            FieldsContext fieldCtx = ctx.fields();
+            if (fieldCtx == null) {
+                return visit(ctx.boosted());
+            }
+            DefaultingQueryBuilder lastBuilder = builder;
+            builder = builder.forFields(fieldsFromContext(fieldCtx));
+            try {
+                return visit(ctx.boosted());
+            } finally {
+                builder = lastBuilder;
+            }
         }
 
         @Override
@@ -148,19 +180,12 @@ public class QueryParserHelper {
             if (ctx.boost == null) {
                 return visit(ctx.term());
             }
-            float boost;
-            try {
-                boost = Float.parseFloat(ctx.boost.getText());
-            } catch (NumberFormatException e) {
-                /*
-                 * This can happen if antlr correction code kicks in a drops
-                 * something that isn't a decimal into this slot. Its rare but
-                 * possible for queries like "foo^cat".
-                 */
+            if (ctx.boost.basicTerm() != null) {
+                // This looks like garbage instead of a useful boost - lets just pretend this is a term.
                 return wrap(builder.termQuery(ctx.getText()));
             }
             BooleanClause term = visit(ctx.term());
-            term.getQuery().setBoost(boost);
+            term.getQuery().setBoost(Float.parseFloat(ctx.boost.getText()));
             return term;
         }
 
@@ -176,7 +201,7 @@ public class QueryParserHelper {
             if (ctx.slop == null) {
                 pq = builder.phraseQuery(text, ctx.useNormalTerm == null);
             } else {
-                // The slop is the integer after the ~
+                // The slop is the number after the ~
                 int slop = Integer.parseInt(ctx.slop.getText(), 10);
                 pq = builder.phraseQuery(text, slop, ctx.useNormalTerm == null);
             }
@@ -193,7 +218,11 @@ public class QueryParserHelper {
             if (ctx.fuzziness == null) {
                 return wrap(builder.fuzzyQuery(ctx.TERM().getText()));
             }
-                return wrap(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())));
+            if (ctx.fuzziness.basicTerm() != null) {
+                // This looks like garbage in place of the slop. Icky.
+                return wrap(builder.termQuery(ctx.getText()));
+            }
+            return wrap(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())));
         }
 
         @Override
@@ -220,5 +249,18 @@ public class QueryParserHelper {
         private BooleanClause wrap(Query query) {
             return new BooleanClause(query, null);
         }
+    }
+
+    private static List<FieldDefinition> fieldsFromContext(FieldsContext ctx) {
+        List<FieldDefinition> fields = new ArrayList<>();
+        for (FieldContext field : ctx.field()) {
+            float boost = 1;
+            if (field.boost != null) {
+                boost = Float.parseFloat(field.boost.getText());
+            }
+            String fieldName = field.fieldName().getText();
+            fields.add(new FieldDefinition(fieldName, fieldName, boost));
+        }
+        return fields;
     }
 }

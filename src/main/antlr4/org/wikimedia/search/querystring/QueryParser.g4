@@ -1,21 +1,25 @@
 parser grammar QueryParser;
 options { tokenVocab=QueryLexer; }
 
-query     : infixOp? EOF;
+query     : infixOp? WS? EOF;
 infixOp   : unmarked;
-unmarked  : or (WS or)* WS?;
+unmarked  : or (WS or)*;
 or        : and ((WS OR WS and)|(WS? SHORT_OR WS? and))*;
 and       : prefixOp ((WS AND WS prefixOp)|(WS? SHORT_AND WS? prefixOp))*;
-prefixOp  : must | mustNot | boosted;
-must      : PLUS WS? boosted;
-mustNot   : MINUS WS? boosted;
-boosted   : term (CARET boost=decimal)?;
+prefixOp  : must | mustNot | fielded;
+must      : PLUS WS? fielded;
+mustNot   : MINUS WS? fielded;
+fielded   : (fields COLON)? boosted;
+boosted   : term (CARET boost=decimalPlease)?;
 term      : basicTerm | fuzzy | prefix | wildcard | paren | phrase;
-fuzzy     : TERM TWIDDLE fuzziness=decimal?;
+fuzzy     : TERM TWIDDLE fuzziness=decimalPlease?;
 prefix    : TERM STAR;
 wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
 paren     : LPAREN WS? infixOp WS? RPAREN;
-phrase    : QUOTE QUOTED_TERM* LQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?;
+phrase    : QUOTE QUOTED_TERM* ((LQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?) | EOF);
 basicTerm : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR;
 
-decimal   : INTEGER | DECIMAL;
+decimalPlease   : INTEGER | DECIMAL | basicTerm; // Basic term is required to handle weird queries - those aren't valid but we have to degrade.
+fields    : field (COMMA WS? field)*;
+field     : fieldName (CARET boost=decimalPlease)?;
+fieldName : term (DOT term)*;
