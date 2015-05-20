@@ -17,6 +17,7 @@ import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
 import org.wikimedia.search.querystring.QueryParser.BoostedContext;
 import org.wikimedia.search.querystring.QueryParser.FieldContext;
+import org.wikimedia.search.querystring.QueryParser.FieldExistsContext;
 import org.wikimedia.search.querystring.QueryParser.FieldedContext;
 import org.wikimedia.search.querystring.QueryParser.FieldsContext;
 import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
@@ -32,18 +33,20 @@ import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 
 public class QueryParserHelper {
-    public static List<FieldDefinition> parseFields(String str) {
+    public static List<FieldDefinition> parseFields(FieldsHelper fieldsHelper, String str) {
         QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
-        return fieldsFromContext(p.fields());
+        return fieldsFromContext(fieldsHelper, p.fields());
     }
 
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
+    private final FieldsHelper fieldsHelper;
+    private final DefaultingQueryBuilder rootBuilder;
     private final boolean defaultIsAnd;
     private final boolean emptyIsMatchAll;
-    private final DefaultingQueryBuilder rootBuilder;
 
-    public QueryParserHelper(DefaultingQueryBuilder rootBuilder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
+    public QueryParserHelper(FieldsHelper fieldsHelper, DefaultingQueryBuilder rootBuilder, boolean defaultIsAnd, boolean emptyIsMatchAll) {
+        this.fieldsHelper = fieldsHelper;
         this.rootBuilder = rootBuilder;
         this.defaultIsAnd = defaultIsAnd;
         this.emptyIsMatchAll = emptyIsMatchAll;
@@ -167,7 +170,7 @@ public class QueryParserHelper {
                 return visit(ctx.boosted());
             }
             DefaultingQueryBuilder lastBuilder = builder;
-            builder = builder.forFields(fieldsFromContext(fieldCtx));
+            builder = builder.forFields(fieldsFromContext(fieldsHelper, fieldCtx));
             try {
                 return visit(ctx.boosted());
             } finally {
@@ -231,6 +234,12 @@ public class QueryParserHelper {
         }
 
         @Override
+        public BooleanClause visitFieldExists(FieldExistsContext ctx) {
+            // TODO dip into elasticsearch to build these properly
+            return wrap(builder.prefixQuery(""));
+        }
+
+        @Override
         public BooleanClause visitWildcard(WildcardContext ctx) {
             return wrap(builder.wildcardQuery(ctx.getText()));
         }
@@ -251,15 +260,16 @@ public class QueryParserHelper {
         }
     }
 
-    private static List<FieldDefinition> fieldsFromContext(FieldsContext ctx) {
+    private static List<FieldDefinition> fieldsFromContext(FieldsHelper fieldsHelper, FieldsContext ctx) {
         List<FieldDefinition> fields = new ArrayList<>();
         for (FieldContext field : ctx.field()) {
             float boost = 1;
             if (field.boost != null) {
                 boost = Float.parseFloat(field.boost.getText());
             }
-            String fieldName = field.fieldName().getText();
-            fields.add(new FieldDefinition(fieldName, fieldName, boost));
+            for (String fieldName : fieldsHelper.resolveSynonyms(field.fieldName().getText())) {
+                fields.add(new FieldDefinition(fieldName, fieldName, boost));
+            }
         }
         return fields;
     }

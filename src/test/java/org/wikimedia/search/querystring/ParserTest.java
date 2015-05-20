@@ -24,7 +24,8 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 import org.elasticsearch.common.base.Splitter;
-import org.elasticsearch.common.collect.ImmutableList;
+import org.elasticsearch.common.collect.ArrayListMultimap;
+import org.elasticsearch.common.collect.ListMultimap;
 import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
@@ -54,6 +55,8 @@ public class ParserTest {
                 { Queries.newMatchNoDocsQuery(), "   ", "empty=matchNone" }, //
                 { query("AND"), "AND" }, //
                 { query("||"), "||" }, //
+                { query(","), "," }, //
+                { query("a,"), "a," }, //
                 { query("~"), "~" }, //
                 { query("+"), "+" }, //
                 { query("-"), "-" }, //
@@ -117,6 +120,7 @@ public class ParserTest {
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
                 { query("pickl*"), "pickl*" }, //
+                // TODO this is probably not quite right - * for a term should be that it is defined at all
                 { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
@@ -151,12 +155,14 @@ public class ParserTest {
                 { and(or("another:foo", "andAnother:foo"), "bar"), "another,andAnother:foo bar" }, //
                 // The next one is totally valid but confusing looking
                 { and(or("another:foo", "andAnother:foo"), "bar"), "another, andAnother:foo bar" }, //
+                { and(or("A:foo", "C:foo", "B:foo"), "bar"), "a,b:foo bar", "synonyms=a->A;C|b->B" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
             boolean defaultIsAnd = true;
             boolean emptyIsMatchAll = true;
             List<String> fields = Collections.singletonList("field");
+            ListMultimap<String, String> synonyms = ArrayListMultimap.create();
             String label;
             switch (param.length) {
             case 2:
@@ -184,9 +190,16 @@ public class ParserTest {
                 }
                 String newFields = settings.remove("fields");
                 if (newFields != null) {
-                    fields = ImmutableList.copyOf(Splitter.on('|').split(newFields));
+                    fields = Splitter.on('|').splitToList(newFields);
                     if (fields.size() == 0) {
                         throw new RuntimeException("Fields cannot be empty");
+                    }
+                }
+                String extraSynonyms = settings.remove("synonyms");
+                if (extraSynonyms != null) {
+                    // What a mess...
+                    for (Map.Entry<String, String> s : Splitter.on('|').withKeyValueSeparator("->").split(extraSynonyms).entrySet()) {
+                        synonyms.putAll(s.getKey(), Splitter.on(';').split(s.getValue()));
                     }
                 }
                 if (!settings.isEmpty()) {
@@ -196,7 +209,7 @@ public class ParserTest {
             default:
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
-            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields });
+            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, synonyms });
         }
         return params;
     }
@@ -215,11 +228,21 @@ public class ParserTest {
     public boolean emptyIsMatchAll;
     @Parameter(5)
     public List<String> fields;
+    @Parameter(6)
+    public ListMultimap<String, String> synonyms;
 
     @Test
     public void parse() {
-        Query parsed = new QueryParserHelper(builder(), defaultIsAnd, emptyIsMatchAll).parse(str);
+        Query parsed = new QueryParserHelper(fieldsHelper(), builder(), defaultIsAnd, emptyIsMatchAll).parse(str);
         assertEquals(expected, parsed);
+    }
+
+    private FieldsHelper fieldsHelper() {
+        FieldsHelper fieldsHelper = new FieldsHelper();
+        for (Map.Entry<String, String> synonym: synonyms.entries()) {
+            fieldsHelper.addSynonym(synonym.getKey(), synonym.getValue());
+        }
+        return fieldsHelper;
     }
 
     private DefaultingQueryBuilder builder() {
@@ -325,9 +348,8 @@ public class ParserTest {
             WildcardQuery wq = new WildcardQuery(new Term(field, s));
             QueryParsers.setRewriteMethod(wq, settings.getRewriteMethod());
             return wq;
-
         }
-        if (s.length() > 1 && s.endsWith("*")) {
+        if (s.endsWith("*")) {
             PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
             QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
             return pq;
