@@ -143,7 +143,9 @@ public class ParserTest {
                 { or(phrase("phrase_a:foo", "phrase_a:bar"), phrase("phrase_b:foo", "phrase_b:bar")), "\"foo bar\"", "fields=a|b" }, //
                 { and(or("phrase_a:foo", "phrase_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
                 { or("a:foo", "b:foo^5"), "foo", "fields=a|b^5" }, //
-                // TODO boosts in the query
+                { and("foo^5", "bar"), "foo^5 bar" }, //
+                { and("foo^5.1", "bar"), "foo^5.1 bar" }, //
+                { and("foo^cat", "bar"), "foo^cat bar" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -339,5 +341,5 @@ public class ParserTest {
     }
 
     private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
-    private static final Pattern BOOST_PATTERN = Pattern.compile("(.+)\\^([0-9]+(\\.[0-9]+)?)");
+    private static final Pattern BOOST_PATTERN = Pattern.compile("(.+)\\^([0-9]*\\.?[0-9]+)");
 }

@@ -15,6 +15,7 @@ import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
+import org.wikimedia.search.querystring.QueryParser.BoostedContext;
 import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
@@ -102,7 +103,7 @@ public class QueryParserHelper {
             for (OrContext or : ors) {
                 add(bq, visit(or), defaultOccur);
             }
-            return new BooleanClause(bq, null);
+            return wrap(bq);
         }
 
         @Override
@@ -116,7 +117,7 @@ public class QueryParserHelper {
             for (AndContext and : ands) {
                 add(bq, visit(and), Occur.SHOULD);
             }
-            return new BooleanClause(bq, null);
+            return wrap(bq);
         }
 
         @Override
@@ -129,17 +130,38 @@ public class QueryParserHelper {
             for (PrefixOpContext prefix : prefixes) {
                 add(bq, visit(prefix), Occur.MUST);
             }
-            return new BooleanClause(bq, null);
+            return wrap(bq);
         }
 
         @Override
         public BooleanClause visitMustNot(MustNotContext ctx) {
-            return new BooleanClause(visit(ctx.term()).getQuery(), Occur.MUST_NOT);
+            return new BooleanClause(visit(ctx.boosted()).getQuery(), Occur.MUST_NOT);
         }
 
         @Override
         public BooleanClause visitMust(MustContext ctx) {
-            return new BooleanClause(visit(ctx.term()).getQuery(), Occur.MUST);
+            return new BooleanClause(visit(ctx.boosted()).getQuery(), Occur.MUST);
+        }
+
+        @Override
+        public BooleanClause visitBoosted(BoostedContext ctx) {
+            if (ctx.boost == null) {
+                return visit(ctx.term());
+            }
+            float boost;
+            try {
+                boost = Float.parseFloat(ctx.boost.getText());
+            } catch (NumberFormatException e) {
+                /*
+                 * This can happen if antlr correction code kicks in a drops
+                 * something that isn't a decimal into this slot. Its rare but
+                 * possible for queries like "foo^cat".
+                 */
+                return wrap(builder.termQuery(ctx.getText()));
+            }
+            BooleanClause term = visit(ctx.term());
+            term.getQuery().setBoost(boost);
+            return term;
         }
 
         @Override
@@ -158,32 +180,30 @@ public class QueryParserHelper {
                 int slop = Integer.parseInt(ctx.slop.getText(), 10);
                 pq = builder.phraseQuery(text, slop, ctx.useNormalTerm == null);
             }
-            return new BooleanClause(pq, null);
+            return wrap(pq);
         }
 
         @Override
         public BooleanClause visitBasicTerm(BasicTermContext ctx) {
-            // TODO a term query here is wrong but its fine for now
-            return new BooleanClause(builder.termQuery(ctx.getText()), null);
+            return wrap(builder.termQuery(ctx.getText()));
         }
 
         @Override
         public BooleanClause visitFuzzy(FuzzyContext ctx) {
             if (ctx.fuzziness == null) {
-                return new BooleanClause(builder.fuzzyQuery(ctx.TERM().getText()), null);
-            } else {
-                return new BooleanClause(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())), null);
+                return wrap(builder.fuzzyQuery(ctx.TERM().getText()));
             }
+                return wrap(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())));
         }
 
         @Override
         public BooleanClause visitPrefix(PrefixContext ctx) {
-            return new BooleanClause(builder.prefixQuery(ctx.TERM().getText()), null);
+            return wrap(builder.prefixQuery(ctx.TERM().getText()));
         }
 
         @Override
         public BooleanClause visitWildcard(WildcardContext ctx) {
-            return new BooleanClause(builder.wildcardQuery(ctx.getText()), null);
+            return wrap(builder.wildcardQuery(ctx.getText()));
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {
@@ -192,6 +212,13 @@ public class QueryParserHelper {
             } else {
                 bq.add(clause);
             }
+        }
+
+        /**
+         * Wrap a query into the default, non-opinionated result.
+         */
+        private BooleanClause wrap(Query query) {
+            return new BooleanClause(query, null);
         }
     }
 }
