@@ -136,8 +136,9 @@ public class ParserTest {
                         "\"two words\" AND pickles AND \"ffnonesenseword catapult\"" }, //
                 { or(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" OR pickles OR \"ffnonesenseword catapult\"" }, //
-                // The next one is also different than Cirrus
+                // The next two are also different than Cirrus
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~garbage" }, //
+                { and(phrase("field:foo", "field:bar"), "cat"), "\"foo bar\"~garbage cat" }, //
                 { or("a:foo", "b:foo"), "foo", "fields=a|b" }, //
                 { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
                 { or(phrase("phrase_a:foo", "phrase_a:bar"), phrase("phrase_b:foo", "phrase_b:bar")), "\"foo bar\"", "fields=a|b" }, //
