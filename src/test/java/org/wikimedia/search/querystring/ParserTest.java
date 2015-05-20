@@ -33,6 +33,7 @@ import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
+import org.wikimedia.search.querystring.query.BoostingFieldQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.MultiFieldQueryBuilder;
@@ -141,6 +142,8 @@ public class ParserTest {
                 { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
                 { or(phrase("phrase_a:foo", "phrase_a:bar"), phrase("phrase_b:foo", "phrase_b:bar")), "\"foo bar\"", "fields=a|b" }, //
                 { and(or("phrase_a:foo", "phrase_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
+                { or("a:foo", "b:foo^5"), "foo", "fields=a|b^5" }, //
+                // TODO boosts in the query
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -227,7 +230,17 @@ public class ParserTest {
     }
 
     private FieldQueryBuilder fieldQueryBuilder(String field) {
-        return new SingleFieldQueryBuilder(field, "phrase_" + field, settings);
+        Matcher m = BOOST_PATTERN.matcher(field);
+        float boost = 1;
+        if (m.matches()) {
+            field = m.group(1);
+            boost = Float.parseFloat(m.group(2));
+        }
+        FieldQueryBuilder b = new SingleFieldQueryBuilder(field, "phrase_" + field, settings);
+        if (boost != 1) {
+            b = new BoostingFieldQueryBuilder(b, boost);
+        }
+        return b;
     }
 
     private static BooleanQuery or(Object... clauses) {
@@ -282,36 +295,49 @@ public class ParserTest {
         }
         if (o instanceof String) {
             String s = o.toString();
-            String field = "field";
-            Matcher m = FIELD_PATTERN.matcher(s);
-            if (m.matches()) {
-                field = m.group(1);
-                s = m.group(2);
-            }
-            m = Pattern.compile("(.+)~(\\d+)").matcher(s);
+            Matcher m = BOOST_PATTERN.matcher(s);
+            float boost = 1;
             if (m.matches()) {
                 s = m.group(1);
-                int edits = Integer.parseInt(m.group(2), 10);
-                FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(),
-                        settings.getFuzzyMaxExpansions(), false);
-                QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
-                return fq;
+                boost = Float.parseFloat(m.group(2));
             }
-            if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
-                WildcardQuery wq = new WildcardQuery(new Term(field, s));
-                QueryParsers.setRewriteMethod(wq, settings.getRewriteMethod());
-                return wq;
-
-            }
-            if (s.length() > 1 && s.endsWith("*")) {
-                PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
-                QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
-                return pq;
-            }
-            return new TermQuery(new Term(field, s));
+            Query q = unboostedQueryFromString(s);
+            q.setBoost(boost);
+            return q;
         }
         throw new IllegalArgumentException("No idea what to do with:  " + o);
     }
 
+    private static Query unboostedQueryFromString(String s) {
+        String field = "field";
+        Matcher m = FIELD_PATTERN.matcher(s);
+        if (m.matches()) {
+            field = m.group(1);
+            s = m.group(2);
+        }
+        m = Pattern.compile("(.+)~(\\d+)").matcher(s);
+        if (m.matches()) {
+            s = m.group(1);
+            int edits = Integer.parseInt(m.group(2), 10);
+            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(),
+                    settings.getFuzzyMaxExpansions(), false);
+            QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
+            return fq;
+        }
+        if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
+            WildcardQuery wq = new WildcardQuery(new Term(field, s));
+            QueryParsers.setRewriteMethod(wq, settings.getRewriteMethod());
+            return wq;
+
+        }
+        if (s.length() > 1 && s.endsWith("*")) {
+            PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
+            QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
+            return pq;
+        }
+        return new TermQuery(new Term(field, s));
+    }
+
     private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
+    private static final Pattern BOOST_PATTERN = Pattern.compile("(.+)\\^([0-9]+(\\.[0-9]+)?)");
 }
