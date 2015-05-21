@@ -7,9 +7,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,6 +39,8 @@ import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
+
+import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.Iterables;
 
 /**
  * Tests that the parser builds the right queries.
@@ -156,6 +160,11 @@ public class ParserTest {
                 // The next one is totally valid but confusing looking
                 { and(or("another:foo", "andAnother:foo"), "bar"), "another, andAnother:foo bar" }, //
                 { and(or("A:foo", "C:foo", "B:foo"), "bar"), "a,b:foo bar", "synonyms=a->A;C|b->B" }, //
+                { and("another:foo", "bar"), "another,blacklisted:foo bar" }, //
+                { and("field:blacklisted:foo", "bar"), "blacklisted:foo bar" }, //
+                { phrase("title:foo", "title:bar"), "intitle:\"foo bar\"", "synonyms=intitle->title, whitelist=title" }, //
+                { or(phrase("title:foo", "title:bar"), phrase("category:foo", "category:bar")), "intitle,incategory:\"foo bar\"",
+                        "synonyms=intitle->title|incategory->category, whitelist=title|category" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -163,6 +172,18 @@ public class ParserTest {
             boolean emptyIsMatchAll = true;
             List<String> fields = Collections.singletonList("field");
             ListMultimap<String, String> synonyms = ArrayListMultimap.create();
+            Set<String> whitelist = new HashSet<>();
+            whitelist.add("another_field");
+            whitelist.add("field");
+            whitelist.add("phrase_field");
+            whitelist.add("another");
+            whitelist.add("andAnother");
+            whitelist.add("another.field");
+            whitelist.add("A");
+            whitelist.add("B");
+            whitelist.add("C");
+            Set<String> blacklist = new HashSet<>();
+            blacklist.add("blacklisted");
             String label;
             switch (param.length) {
             case 2:
@@ -202,6 +223,14 @@ public class ParserTest {
                         synonyms.putAll(s.getKey(), Splitter.on(';').split(s.getValue()));
                     }
                 }
+                String extraWhitelist = settings.remove("whitelist");
+                if (extraWhitelist != null) {
+                    Iterables.addAll(whitelist, Splitter.on('|').split(extraWhitelist));
+                }
+                String extraBlacklist = settings.remove("blacklist");
+                if (extraBlacklist != null) {
+                    Iterables.addAll(blacklist, Splitter.on('|').split(extraBlacklist));
+                }
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -209,7 +238,7 @@ public class ParserTest {
             default:
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
-            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, synonyms });
+            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, synonyms, whitelist, blacklist });
         }
         return params;
     }
@@ -230,6 +259,10 @@ public class ParserTest {
     public List<String> fields;
     @Parameter(6)
     public ListMultimap<String, String> synonyms;
+    @Parameter(7)
+    public Set<String> whitelist;
+    @Parameter(8)
+    public Set<String> blacklist;
 
     @Test
     public void parse() {
@@ -241,6 +274,16 @@ public class ParserTest {
         FieldsHelper fieldsHelper = new FieldsHelper();
         for (Map.Entry<String, String> synonym: synonyms.entries()) {
             fieldsHelper.addSynonym(synonym.getKey(), synonym.getValue());
+        }
+        if (whitelist == null) {
+            fieldsHelper.whitelistAll();
+        } else {
+            for (String field : whitelist) {
+                fieldsHelper.whitelist(field);
+            }
+        }
+        for (String field : blacklist) {
+            fieldsHelper.blacklist(field);
         }
         return fieldsHelper;
     }

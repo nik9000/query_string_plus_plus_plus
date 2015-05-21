@@ -26,6 +26,11 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
 
     @Override
     public Query termQuery(String term) {
+        // TODO its really wrong to make a _term_ query here
+        /*
+         * We should analyze the term and handle things like multiple tokens
+         * coming out of that term - similar to what query_string does now.
+         */
         return new TermQuery(term(term));
     }
 

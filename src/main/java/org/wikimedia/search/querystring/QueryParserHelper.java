@@ -170,7 +170,17 @@ public class QueryParserHelper {
                 return visit(ctx.boosted());
             }
             DefaultingQueryBuilder lastBuilder = builder;
-            builder = builder.forFields(fieldsFromContext(fieldsHelper, fieldCtx));
+            List<FieldDefinition> fields = fieldsFromContext(fieldsHelper, fieldCtx);
+            if (fields.isEmpty()) {
+                /*
+                 * The user specified some field that can't be searched. That is
+                 * ok - they probably want to search for something with a colon
+                 * in it. Lets just treat that like a term query for now even
+                 * though we might decide later some different handling makes sense.
+                 */
+                return wrap(builder.termQuery(ctx.getText()));
+            }
+            builder = builder.forFields(fields);
             try {
                 return visit(ctx.boosted());
             } finally {
@@ -184,7 +194,8 @@ public class QueryParserHelper {
                 return visit(ctx.term());
             }
             if (ctx.boost.basicTerm() != null) {
-                // This looks like garbage instead of a useful boost - lets just pretend this is a term.
+                // This looks like garbage instead of a useful boost - lets just
+                // pretend this is a term.
                 return wrap(builder.termQuery(ctx.getText()));
             }
             BooleanClause term = visit(ctx.term());
@@ -267,7 +278,7 @@ public class QueryParserHelper {
             if (field.boost != null) {
                 boost = Float.parseFloat(field.boost.getText());
             }
-            for (String fieldName : fieldsHelper.resolveSynonyms(field.fieldName().getText())) {
+            for (String fieldName : fieldsHelper.resolve(field.fieldName().getText())) {
                 fields.add(new FieldDefinition(fieldName, fieldName, boost));
             }
         }
