@@ -13,6 +13,7 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Query;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
+import org.wikimedia.search.querystring.FieldsHelper.UnauthorizedAction;
 import org.wikimedia.search.querystring.QueryParser.AndContext;
 import org.wikimedia.search.querystring.QueryParser.BasicTermContext;
 import org.wikimedia.search.querystring.QueryParser.BoostedContext;
@@ -33,10 +34,8 @@ import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 
 public class QueryParserHelper {
-    public static List<FieldDefinition> parseFields(FieldsHelper fieldsHelper, String str) {
-        QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
-        QueryParser p = new QueryParser(new BufferedTokenStream(l));
-        return fieldsFromContext(fieldsHelper, p.fields());
+    public static List<FieldDefinition> parseFields(FieldsHelper fieldsHelper, String str, UnauthorizedAction unauthorized) {
+        return fieldsFromContext(fieldsHelper, buildParser(str).justFields().fields(), unauthorized);
     }
 
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
@@ -53,22 +52,7 @@ public class QueryParserHelper {
     }
 
     public Query parse(String str) {
-        if (log.isDebugEnabled()) {
-            BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new ANTLRInputStream(str)));
-            s.fill();
-            for (Token t : s.getTokens()) {
-                log.debug("Token:  {} {}", QueryLexer.VOCABULARY.getDisplayName(t.getType()), t.getText());
-            }
-        }
-
-        QueryLexer l = new QueryLexer(new ANTLRInputStream(str));
-        QueryParser p = new QueryParser(new BufferedTokenStream(l));
-        // We don't want the console error listener....
-        // p.removeErrorListeners();
-        if (log.isTraceEnabled()) {
-            p.addParseListener(new TraceParseTreeListener(p));
-        }
-        BooleanClause c = new Visitor().visit(p.query());
+        BooleanClause c = new Visitor().visit(buildParser(str).query());
         if (c == null) {
             // We've just parsed an empty query
             return emptyIsMatchAll ? rootBuilder.matchAll() : rootBuilder.matchNone();
@@ -81,6 +65,25 @@ public class QueryParserHelper {
             return bq;
         }
         return c.getQuery();
+    }
+
+    private static QueryParser buildParser(String toParse) {
+        if (log.isDebugEnabled()) {
+            BufferedTokenStream s = new BufferedTokenStream(new QueryLexer(new ANTLRInputStream(toParse)));
+            s.fill();
+            for (Token t : s.getTokens()) {
+                log.debug("Token:  {} {}", QueryLexer.VOCABULARY.getDisplayName(t.getType()), t.getText());
+            }
+        }
+
+        QueryLexer l = new QueryLexer(new ANTLRInputStream(toParse));
+        QueryParser p = new QueryParser(new BufferedTokenStream(l));
+        // We don't want the console error listener....
+        // p.removeErrorListeners();
+        if (log.isTraceEnabled()) {
+            p.addParseListener(new TraceParseTreeListener(p));
+        }
+        return p;
     }
 
     /**
@@ -170,13 +173,14 @@ public class QueryParserHelper {
                 return visit(ctx.boosted());
             }
             DefaultingQueryBuilder lastBuilder = builder;
-            List<FieldDefinition> fields = fieldsFromContext(fieldsHelper, fieldCtx);
+            List<FieldDefinition> fields = fieldsFromContext(fieldsHelper, fieldCtx, UnauthorizedAction.REMOVE);
             if (fields.isEmpty()) {
                 /*
                  * The user specified some field that can't be searched. That is
                  * ok - they probably want to search for something with a colon
                  * in it. Lets just treat that like a term query for now even
-                 * though we might decide later some different handling makes sense.
+                 * though we might decide later some different handling makes
+                 * sense.
                  */
                 return wrap(builder.termQuery(ctx.getText()));
             }
@@ -271,16 +275,14 @@ public class QueryParserHelper {
         }
     }
 
-    private static List<FieldDefinition> fieldsFromContext(FieldsHelper fieldsHelper, FieldsContext ctx) {
+    private static List<FieldDefinition> fieldsFromContext(FieldsHelper fieldsHelper, FieldsContext ctx, UnauthorizedAction unauthorized) {
         List<FieldDefinition> fields = new ArrayList<>();
         for (FieldContext field : ctx.field()) {
             float boost = 1;
             if (field.boost != null) {
                 boost = Float.parseFloat(field.boost.getText());
             }
-            for (String fieldName : fieldsHelper.resolve(field.fieldName().getText())) {
-                fields.add(new FieldDefinition(fieldName, fieldName, boost));
-            }
+            fields.addAll(fieldsHelper.resolve(field.fieldName().getText(), boost, unauthorized));
         }
         return fields;
     }

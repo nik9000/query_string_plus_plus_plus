@@ -2,6 +2,8 @@ package org.wikimedia.search.querystring;
 
 import static org.elasticsearch.common.collect.Maps.newHashMap;
 import static org.junit.Assert.assertEquals;
+import static org.wikimedia.search.querystring.FieldsParsingTest.BOOST_PATTERN;
+import static org.wikimedia.search.querystring.FieldsParsingTest.fieldDefinition;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,7 +48,7 @@ import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.
  * Tests that the parser builds the right queries.
  */
 @RunWith(Parameterized.class)
-public class ParserTest {
+public class QueryParsingTest {
     @Parameters(name = "{0}")
     public static Collection<Object[]> params() {
         List<Object[]> params = new ArrayList<>();
@@ -99,6 +101,7 @@ public class ParserTest {
                 { phrase("foo", "\"bar"), "\"foo \\\"bar\"" }, //
                 { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
                 { phrase("foo", "bar"), "\"foo bar" }, //
+                { boost(phrase("foo", "bar"), 2), "\"foo bar\"^2" }, //
                 { and(phrase("foo", "bar"), "phrase_field:baz"), "\"foo bar\" \"baz\"" }, //
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
                 { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
@@ -124,7 +127,8 @@ public class ParserTest {
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
                 { query("pickl*"), "pickl*" }, //
-                // TODO this is probably not quite right - * for a term should be that it is defined at all
+                // TODO this is probably not quite right - * for a term should
+                // be that it is defined at all
                 { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
@@ -159,19 +163,24 @@ public class ParserTest {
                 { and(or("another:foo", "andAnother:foo"), "bar"), "another,andAnother:foo bar" }, //
                 // The next one is totally valid but confusing looking
                 { and(or("another:foo", "andAnother:foo"), "bar"), "another, andAnother:foo bar" }, //
-                { and(or("A:foo", "C:foo", "B:foo"), "bar"), "a,b:foo bar", "synonyms=a->A;C|b->B" }, //
+                { and(or("A:foo", "C:foo", "B:foo"), "bar"), "a,b:foo bar", "aliases=a->A;C|b->B" }, //
                 { and("another:foo", "bar"), "another,blacklisted:foo bar" }, //
                 { and("field:blacklisted:foo", "bar"), "blacklisted:foo bar" }, //
-                { phrase("title:foo", "title:bar"), "intitle:\"foo bar\"", "synonyms=intitle->title, whitelist=title" }, //
+                { phrase("title:foo", "title:bar"), "intitle:\"foo bar\"", "aliases=intitle->title, whitelist=title" }, //
                 { or(phrase("title:foo", "title:bar"), phrase("category:foo", "category:bar")), "intitle,incategory:\"foo bar\"",
-                        "synonyms=intitle->title|incategory->category, whitelist=title|category" }, //
+                        "aliases=intitle->title|incategory->category, whitelist=title|category" }, //
+                { or(boost(phrase("title:foo", "title:bar"), 2), phrase("category:foo", "category:bar")), "tc:\"foo bar\"",
+                        "aliases=tc->title^2;category, whitelist=title|category" }, //
+                { or(boost(phrase("title:foo", "title:bar"), 4), boost(phrase("category:foo", "category:bar"), 2)), "tc^2:\"foo bar\"",
+                        "aliases=tc->title^2;category, whitelist=title|category" }, //
+        // TODO fields can't be integer or contain them!
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
             boolean defaultIsAnd = true;
             boolean emptyIsMatchAll = true;
             List<String> fields = Collections.singletonList("field");
-            ListMultimap<String, String> synonyms = ArrayListMultimap.create();
+            ListMultimap<String, String> aliases = ArrayListMultimap.create();
             Set<String> whitelist = new HashSet<>();
             whitelist.add("another_field");
             whitelist.add("field");
@@ -216,11 +225,11 @@ public class ParserTest {
                         throw new RuntimeException("Fields cannot be empty");
                     }
                 }
-                String extraSynonyms = settings.remove("synonyms");
-                if (extraSynonyms != null) {
+                String extraAliases = settings.remove("aliases");
+                if (extraAliases != null) {
                     // What a mess...
-                    for (Map.Entry<String, String> s : Splitter.on('|').withKeyValueSeparator("->").split(extraSynonyms).entrySet()) {
-                        synonyms.putAll(s.getKey(), Splitter.on(';').split(s.getValue()));
+                    for (Map.Entry<String, String> s : Splitter.on('|').withKeyValueSeparator("->").split(extraAliases).entrySet()) {
+                        aliases.putAll(s.getKey(), Splitter.on(';').split(s.getValue()));
                     }
                 }
                 String extraWhitelist = settings.remove("whitelist");
@@ -238,11 +247,12 @@ public class ParserTest {
             default:
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
-            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, synonyms, whitelist, blacklist });
+            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist });
         }
         return params;
     }
 
+    private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
     private static final DefaultingQueryBuilder.Settings defaultSettings = new DefaultingQueryBuilder.Settings();
     private static final FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
     @Parameter(0)
@@ -258,7 +268,7 @@ public class ParserTest {
     @Parameter(5)
     public List<String> fields;
     @Parameter(6)
-    public ListMultimap<String, String> synonyms;
+    public ListMultimap<String, String> aliases;
     @Parameter(7)
     public Set<String> whitelist;
     @Parameter(8)
@@ -272,8 +282,8 @@ public class ParserTest {
 
     private FieldsHelper fieldsHelper() {
         FieldsHelper fieldsHelper = new FieldsHelper();
-        for (Map.Entry<String, String> synonym: synonyms.entries()) {
-            fieldsHelper.addSynonym(synonym.getKey(), synonym.getValue());
+        for (Map.Entry<String, String> alias : aliases.entries()) {
+            fieldsHelper.addAlias(alias.getKey(), fieldDefinition(alias.getValue(), ""));
         }
         if (whitelist == null) {
             fieldsHelper.whitelistAll();
@@ -291,19 +301,9 @@ public class ParserTest {
     private DefaultingQueryBuilder builder() {
         List<FieldDefinition> fieldDefinitions = new ArrayList<>();
         for (String field : fields) {
-            fieldDefinitions.add(fieldDefinition(field));
+            fieldDefinitions.add(fieldDefinition(field, "phrase_"));
         }
         return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(settings, fieldDefinitions));
-    }
-
-    private FieldDefinition fieldDefinition(String field) {
-        Matcher m = BOOST_PATTERN.matcher(field);
-        float boost = 1;
-        if (m.matches()) {
-            field = m.group(1);
-            boost = Float.parseFloat(m.group(2));
-        }
-        return  new FieldDefinition(field, "phrase_" + field, boost);
     }
 
     private static BooleanQuery or(Object... clauses) {
@@ -400,6 +400,8 @@ public class ParserTest {
         return new TermQuery(new Term(field, s));
     }
 
-    private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
-    private static final Pattern BOOST_PATTERN = Pattern.compile("(.+)\\^([0-9]*\\.?[0-9]+)");
+    private static Query boost(Query query, float boost) {
+        query.setBoost(boost);
+        return query;
+    }
 }

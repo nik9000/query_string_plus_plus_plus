@@ -4,17 +4,26 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.ListMultimap;
+import org.wikimedia.search.querystring.query.FieldDefinition;
 
 /**
  * Helps QueryParserHelper resolve fields.
  */
 public class FieldsHelper {
+    /**
+     * What to do with fields that are not authorized.
+     */
+    public static enum UnauthorizedAction {
+        KEEP, REMOVE, WHITELIST;
+    }
+
+    private final ListMultimap<String, FieldDefinition> aliases = ArrayListMultimap.create();
     private final Set<String> blacklist = new HashSet<>();
-    private final ListMultimap<String, String> synonyms = ArrayListMultimap.create();
     private Set<String> whitelist = new HashSet<>();
 
     /**
@@ -43,36 +52,71 @@ public class FieldsHelper {
         blacklist.add(field);
     }
 
-    public void addSynonym(String from, String to) {
-        synonyms.put(from, to);
+    public void addAlias(String from, FieldDefinition to) {
+        aliases.put(from, to);
     }
 
-    public void removeSynonym(String from, String to) {
-        synonyms.remove(from, to);
+    public void removeAlias(String from, FieldDefinition to) {
+        aliases.remove(from, to);
     }
 
     /**
-     * Resolves synonyms and whitelist/blacklists. Note that the blacklist is
+     * Resolves aliases and whitelist/blacklists. Note that the blacklist is
      * applied before the whitelist.
      */
-    public List<String> resolve(String from) {
-        List<String> found = synonyms.get(from);
+    public List<FieldDefinition> resolve(String fieldName, float boost, UnauthorizedAction unauthorized) {
+        List<FieldDefinition> found = aliases.get(fieldName);
         if (found.isEmpty()) {
-            if (allowed(from)) {
-                return Collections.singletonList(from);
+            switch (unauthorized) {
+            case WHITELIST:
+                whitelist(fieldName);
+                // Intentional fallthrough
+            case KEEP:
+                return noAlias(fieldName, boost);
+            case REMOVE:
+                if (!allowed(fieldName)) {
+                    return Collections.emptyList();
+                }
+                return noAlias(fieldName, boost);
             }
-            return Collections.emptyList();
         }
-        List<String> allowed = new ArrayList<String>();
-        for (String s : found) {
-            if (allowed(s)) {
-                allowed.add(s);
+        List<FieldDefinition> allowed = new ArrayList<>();
+        for (FieldDefinition alias : found) {
+            switch (unauthorized) {
+            case WHITELIST:
+                whitelist(alias.getField());
+                whitelist(alias.getPhraseField());
+                // Intentional fallthrough
+            case KEEP:
+                allowed.add(boosted(alias, boost));
+                break;
+            case REMOVE:
+                if (allowed(alias.getField()) && allowed(alias.getPhraseField())) {
+                    allowed.add(boosted(alias, boost));
+                }
+                break;
             }
         }
         return allowed;
     }
 
+    @Override
+    public String toString() {
+        return String.format(Locale.ROOT, "%s %s %s", aliases, whitelist, blacklist);
+    }
+
     private boolean allowed(String field) {
         return !blacklist.contains(field) && (whitelist == null || whitelist.contains(field));
+    }
+
+    private List<FieldDefinition> noAlias(String fieldName, float boost) {
+        return Collections.singletonList(new FieldDefinition(fieldName, fieldName, boost));
+    }
+
+    private FieldDefinition boosted(FieldDefinition original, float boost) {
+        if (boost == 1) {
+            return original;
+        }
+        return new FieldDefinition(original.getField(), original.getPhraseField(), original.getBoost() * boost);
     }
 }

@@ -2,6 +2,8 @@ parser grammar QueryParser;
 options { tokenVocab=QueryLexer; }
 
 query     : infixOp? WS? EOF;
+justFields : fields EOF;
+
 infixOp   : unmarked;
 unmarked  : or (WS or)*;
 or        : and ((WS OR WS and)|(WS? SHORT_OR WS? and))*;
