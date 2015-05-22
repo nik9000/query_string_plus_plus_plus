@@ -14,6 +14,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private final String query;
     private final Map<String, String> aliases = new HashMap<>();
     private final Map<String, FieldDefinition> fieldDefinitions = new HashMap<>();
+    private boolean defaultIsAnd = true;
+    private boolean emptyIsMatchAll = true;
 
     private Float boost;
 
@@ -39,6 +41,40 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
      */
     public QueryStringPlusPlusPlusBuilder define(String field, FieldDefinition definition) {
         fieldDefinitions.put(field, definition);
+        return this;
+    }
+
+    /**
+     * When two terms are next to eachother without any explicit operator they
+     * should both be required.
+     */
+    public QueryStringPlusPlusPlusBuilder defaultIsAnd() {
+        defaultIsAnd = true;
+        return this;
+    }
+
+    /**
+     * When two terms are next to eachother without any explicit operator then
+     * either one is required.
+     */
+    public QueryStringPlusPlusPlusBuilder defaultIsOr() {
+        defaultIsAnd = false;
+        return this;
+    }
+
+    /**
+     * When sent an empty query return all documents.
+     */
+    public QueryStringPlusPlusPlusBuilder emptyIsMatchAll() {
+        emptyIsMatchAll = true;
+        return this;
+    }
+
+    /**
+     * When sent an empty query return no results.
+     */
+    public QueryStringPlusPlusPlusBuilder emptyIsMatchNone() {
+        emptyIsMatchAll = false;
         return this;
     }
 
@@ -81,6 +117,12 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         }
         if (boost != null) {
             builder.field("boost", boost);
+        }
+        if (!defaultIsAnd) {
+            builder.field("default_operator", "or");
+        }
+        if (!emptyIsMatchAll) {
+            builder.field("empty", "match_none");
         }
         builder.endObject();
     }

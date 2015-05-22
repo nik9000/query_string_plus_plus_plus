@@ -26,6 +26,28 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     }
 
     @Test
+    public void defaultOperator() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
+        SearchResponse response = client().prepareSearch("test").setQuery(builder("foo", "bar baz")).get();
+        assertHitCount(response, 0);
+        response = client().prepareSearch("test").setQuery(builder("foo", "bar baz").defaultIsOr()).get();
+        assertHitCount(response, 1);
+        response = client().prepareSearch("test").setQuery(builder("foo", "bar baz").defaultIsAnd()).get();
+        assertHitCount(response, 0);
+    }
+
+    @Test
+    public void emptyQuery() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
+        SearchResponse response = client().prepareSearch("test").setQuery(builder("foo", "")).get();
+        assertHitCount(response, 1);
+        response = client().prepareSearch("test").setQuery(builder("foo", "").emptyIsMatchNone()).get();
+        assertHitCount(response, 0);
+        response = client().prepareSearch("test").setQuery(builder("foo", "").emptyIsMatchAll()).get();
+        assertHitCount(response, 1);
+    }
+
+    @Test
     public void fields() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("a", "foo"), //
                 client().prepareIndex("test", "test", "2").setSource("b", "foo"));
