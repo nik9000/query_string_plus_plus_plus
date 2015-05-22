@@ -1,18 +1,23 @@
 package org.wikimedia.search.querystring;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.ListMultimap;
 import org.wikimedia.search.querystring.query.FieldDefinition;
+import org.wikimedia.search.querystring.query.FieldReference;
+import org.wikimedia.search.querystring.query.FieldUsage;
 
 /**
- * Helps QueryParserHelper resolve fields.
+ * Helps QueryParserHelper resolve fields. Note that this class is quite mutable
+ * and not thread safe.
  */
 public class FieldsHelper {
     /**
@@ -22,9 +27,17 @@ public class FieldsHelper {
         KEEP, REMOVE, WHITELIST;
     }
 
-    private final ListMultimap<String, FieldDefinition> aliases = ArrayListMultimap.create();
+    private final Map<String, FieldDefinition> fields = new HashMap<>();
+    private final ListMultimap<String, FieldReference> aliases = ArrayListMultimap.create();
     private final Set<String> blacklist = new HashSet<>();
     private Set<String> whitelist = new HashSet<>();
+
+    /**
+     * Defines a field for later use.
+     */
+    public void addField(String name, FieldDefinition definition) {
+        fields.put(name, definition);
+    }
 
     /**
      * Whitelist a field so it can be queried. If whitelistAll has been called
@@ -52,52 +65,76 @@ public class FieldsHelper {
         blacklist.add(field);
     }
 
-    public void addAlias(String from, FieldDefinition to) {
-        aliases.put(from, to);
-    }
-
-    public void removeAlias(String from, FieldDefinition to) {
-        aliases.remove(from, to);
+    /**
+     * Adds an alias from one field name to another with an optional boost.
+     */
+    public void addAlias(String from, FieldReference reference) {
+        aliases.put(from, reference);
     }
 
     /**
-     * Resolves aliases and whitelist/blacklists. Note that the blacklist is
-     * applied before the whitelist.
+     * Remove an alias.
      */
-    public List<FieldDefinition> resolve(String fieldName, float boost, UnauthorizedAction unauthorized) {
-        List<FieldDefinition> found = aliases.get(fieldName);
+    public void removeAlias(String from, String to) {
+        for (Iterator<FieldReference> usage = aliases.get(from).iterator(); usage.hasNext();) {
+            if (usage.next().getName().equals(to)) {
+                usage.remove();
+            }
+        }
+    }
+
+    /**
+     * Resolves a and whitelist/blacklists. Note that the blacklist is applied
+     * before the whitelist.
+     */
+    public List<FieldUsage> resolve(FieldReference reference, UnauthorizedAction unauthorized) {
+        List<FieldUsage> results = new ArrayList<>();
+        resolve(reference, unauthorized, results);
+        return results;
+    }
+
+    /**
+     * Just a list form of the resolve method.
+     */
+    public List<FieldUsage> resolve(Iterable<FieldReference> references, UnauthorizedAction unauthorized) {
+        List<FieldUsage> results = new ArrayList<>();
+        for (FieldReference reference : references) {
+            resolve(reference, unauthorized, results);
+        }
+        return results;
+    }
+
+    private void resolve(FieldReference reference, UnauthorizedAction unauthorized, List<FieldUsage> results) {
+        List<FieldReference> found = aliases.get(reference.getName());
         if (found.isEmpty()) {
             switch (unauthorized) {
             case WHITELIST:
-                whitelist(fieldName);
+                whitelist(reference.getName());
                 // Intentional fallthrough
             case KEEP:
-                return noAlias(fieldName, boost);
+                results.add(buildNoAliasResult(reference));
             case REMOVE:
-                if (!allowed(fieldName)) {
-                    return Collections.emptyList();
+                if (!allowed(reference.getName())) {
+                    return;
                 }
-                return noAlias(fieldName, boost);
+                results.add(buildNoAliasResult(reference));
             }
         }
-        List<FieldDefinition> allowed = new ArrayList<>();
-        for (FieldDefinition alias : found) {
+        for (FieldReference alias : found) {
             switch (unauthorized) {
             case WHITELIST:
-                whitelist(alias.getField());
-                whitelist(alias.getPhraseField());
+                whitelist(alias.getName());
                 // Intentional fallthrough
             case KEEP:
-                allowed.add(boosted(alias, boost));
+                results.add(buildUsage(alias, reference.getBoost()));
                 break;
             case REMOVE:
-                if (allowed(alias.getField()) && allowed(alias.getPhraseField())) {
-                    allowed.add(boosted(alias, boost));
+                if (allowed(alias.getName())) {
+                    results.add(buildUsage(alias, reference.getBoost()));
                 }
                 break;
             }
         }
-        return allowed;
     }
 
     @Override
@@ -109,14 +146,16 @@ public class FieldsHelper {
         return !blacklist.contains(field) && (whitelist == null || whitelist.contains(field));
     }
 
-    private List<FieldDefinition> noAlias(String fieldName, float boost) {
-        return Collections.singletonList(new FieldDefinition(fieldName, fieldName, boost));
+    private FieldUsage buildNoAliasResult(FieldReference reference) {
+        return new FieldUsage(definition(reference.getName()), reference.getBoost());
     }
 
-    private FieldDefinition boosted(FieldDefinition original, float boost) {
-        if (boost == 1) {
-            return original;
-        }
-        return new FieldDefinition(original.getField(), original.getPhraseField(), original.getBoost() * boost);
+    private FieldUsage buildUsage(FieldReference alias, float boost) {
+        return new FieldUsage(definition(alias.getName()), alias.getBoost() * boost);
+    }
+
+    private FieldDefinition definition(String field) {
+        FieldDefinition result = fields.get(field);
+        return result == null ? new FieldDefinition(field, field) : result;
     }
 }

@@ -1,73 +1,38 @@
 package org.wikimedia.search.querystring.query;
 
+/**
+ * Information about how a field should be used when creating queries.
+ */
 public class FieldDefinition {
-    private final String field;
-    private final String phraseField;
-    private final float boost;
+    private final String unquoted;
+    private final String quoted;
 
-    public FieldDefinition(String field, String phraseField, float boost) {
-        this.field = field;
-        this.phraseField = phraseField;
-        this.boost = boost;
+    public FieldDefinition(String unquoted, String quoted) {
+        this.unquoted = unquoted;
+        this.quoted = quoted;
     }
 
-    public String getField() {
-        return field;
+    /**
+     * The field searched for unquoted terms. Usually users expect this to be
+     * stemmed to some degree.
+     */
+    public String getUnquoted() {
+        return unquoted;
     }
 
-    public String getPhraseField() {
-        return phraseField;
-    }
-
-    public float getBoost() {
-        return boost;
+    /**
+     * The field searched for quoted terms. Usually users expect quoted terms to
+     * be more precise/less stemmed that the field searched for unquoted terms.
+     */
+    public String getQuoted() {
+        return quoted;
     }
 
     @Override
     public String toString() {
-        StringBuilder b = new StringBuilder();
-        b.append(field);
-        if (!phraseField.equals(field)) {
-            b.append('(').append(phraseField).append(')');
+        if (quoted.equals(unquoted)) {
+            return unquoted;
         }
-        if (boost != 1) {
-            b.append('^').append(boost);
-        }
-        return b.toString();
+        return unquoted + "(\"" + quoted + "\")";
     }
-
-    @Override
-    public int hashCode() {
-        final int prime = 31;
-        int result = 1;
-        result = prime * result + Float.floatToIntBits(boost);
-        result = prime * result + ((field == null) ? 0 : field.hashCode());
-        result = prime * result + ((phraseField == null) ? 0 : phraseField.hashCode());
-        return result;
-    }
-
-    @Override
-    public boolean equals(Object obj) {
-        if (this == obj)
-            return true;
-        if (obj == null)
-            return false;
-        if (getClass() != obj.getClass())
-            return false;
-        FieldDefinition other = (FieldDefinition) obj;
-        if (Float.floatToIntBits(boost) != Float.floatToIntBits(other.boost))
-            return false;
-        if (field == null) {
-            if (other.field != null)
-                return false;
-        } else if (!field.equals(other.field))
-            return false;
-        if (phraseField == null) {
-            if (other.phraseField != null)
-                return false;
-        } else if (!phraseField.equals(other.phraseField))
-            return false;
-        return true;
-    }
-
 }

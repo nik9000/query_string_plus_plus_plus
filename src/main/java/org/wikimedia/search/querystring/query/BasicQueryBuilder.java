@@ -13,13 +13,13 @@ public class BasicQueryBuilder implements QueryBuilder {
     private final FieldQueryBuilder fieldQueryBuilder;
     private final FieldQueryBuilder.Settings fieldQuerySettings;
 
-    public BasicQueryBuilder(FieldQueryBuilder.Settings fieldQuerySettings, List<FieldDefinition> fields) {
+    public BasicQueryBuilder(FieldQueryBuilder.Settings fieldQuerySettings, List<FieldUsage> fields) {
         this.fieldQuerySettings = fieldQuerySettings;
         if (fields.size() == 1) {
             fieldQueryBuilder = buildFieldQueryBuilder(fields.get(0));
         } else {
             List<FieldQueryBuilder> fieldBuilders = new ArrayList<>();
-            for (FieldDefinition field : fields) {
+            for (FieldUsage field : fields) {
                 fieldBuilders.add(buildFieldQueryBuilder(field));
             }
             fieldQueryBuilder = new MultiFieldQueryBuilder(fieldBuilders);
@@ -27,7 +27,7 @@ public class BasicQueryBuilder implements QueryBuilder {
     }
 
     @Override
-    public QueryBuilder forFields(List<FieldDefinition> fields) {
+    public QueryBuilder forFields(List<FieldUsage> fields) {
         return new BasicQueryBuilder(fieldQuerySettings, fields);
     }
 
@@ -69,8 +69,8 @@ public class BasicQueryBuilder implements QueryBuilder {
     /**
      * Builds the field queries based on field definitions.
      */
-    private FieldQueryBuilder buildFieldQueryBuilder(FieldDefinition field) {
-        FieldQueryBuilder b = new SingleFieldQueryBuilder(field.getField(), field.getPhraseField(), fieldQuerySettings);
+    private FieldQueryBuilder buildFieldQueryBuilder(FieldUsage field) {
+        FieldQueryBuilder b = new SingleFieldQueryBuilder(field, fieldQuerySettings);
         if (field.getBoost() != 1) {
             b = new BoostingFieldQueryBuilder(b, field.getBoost());
         }

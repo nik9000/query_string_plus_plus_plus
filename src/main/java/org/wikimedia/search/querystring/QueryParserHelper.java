@@ -31,11 +31,12 @@ import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 import org.wikimedia.search.querystring.QueryParser.WildcardContext;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
-import org.wikimedia.search.querystring.query.FieldDefinition;
+import org.wikimedia.search.querystring.query.FieldReference;
+import org.wikimedia.search.querystring.query.FieldUsage;
 
 public class QueryParserHelper {
-    public static List<FieldDefinition> parseFields(FieldsHelper fieldsHelper, String str, UnauthorizedAction unauthorized) {
-        return fieldsFromContext(fieldsHelper, buildParser(str).justFields().fields(), unauthorized);
+    public static List<FieldReference> parseFields(String str) {
+        return fieldsFromContext(buildParser(str).justFields().fields());
     }
 
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
@@ -173,7 +174,7 @@ public class QueryParserHelper {
                 return visit(ctx.boosted());
             }
             DefaultingQueryBuilder lastBuilder = builder;
-            List<FieldDefinition> fields = fieldsFromContext(fieldsHelper, fieldCtx, UnauthorizedAction.REMOVE);
+            List<FieldUsage> fields = fieldsHelper.resolve(fieldsFromContext(fieldCtx), UnauthorizedAction.REMOVE);
             if (fields.isEmpty()) {
                 /*
                  * The user specified some field that can't be searched. That is
@@ -275,14 +276,14 @@ public class QueryParserHelper {
         }
     }
 
-    private static List<FieldDefinition> fieldsFromContext(FieldsHelper fieldsHelper, FieldsContext ctx, UnauthorizedAction unauthorized) {
-        List<FieldDefinition> fields = new ArrayList<>();
+    private static List<FieldReference> fieldsFromContext(FieldsContext ctx) {
+        List<FieldReference> fields = new ArrayList<>();
         for (FieldContext field : ctx.field()) {
             float boost = 1;
             if (field.boost != null) {
                 boost = Float.parseFloat(field.boost.getText());
             }
-            fields.addAll(fieldsHelper.resolve(field.fieldName().getText(), boost, unauthorized));
+            fields.add(new FieldReference(field.fieldName().getText(), boost));
         }
         return fields;
     }

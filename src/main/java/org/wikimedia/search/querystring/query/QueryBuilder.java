@@ -8,7 +8,7 @@ public interface QueryBuilder extends FieldQueryBuilder {
     /**
      * Creates a copy of this builder that uses the passed in fields.
      */
-    QueryBuilder forFields(List<FieldDefinition> fields);
+    QueryBuilder forFields(List<FieldUsage> fields);
 
     Query matchNone();
 

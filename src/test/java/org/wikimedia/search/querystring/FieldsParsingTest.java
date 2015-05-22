@@ -1,6 +1,7 @@
 package org.wikimedia.search.querystring;
 
 import static org.junit.Assert.assertEquals;
+import static org.wikimedia.search.querystring.QueryParserHelper.parseFields;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,9 +15,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
-import org.wikimedia.search.querystring.FieldsHelper.UnauthorizedAction;
-import org.wikimedia.search.querystring.query.FieldDefinition;
-
+import org.wikimedia.search.querystring.query.FieldReference;
 /**
  * Tests that the parser properly parses field specification.
  */
@@ -39,14 +38,14 @@ public class FieldsParsingTest {
 
     public static final Pattern BOOST_PATTERN = Pattern.compile("(.+)\\^([0-9]*\\.?[0-9]+)");
 
-    public static FieldDefinition fieldDefinition(String field, String phrasePrefix) {
+    public static FieldReference fieldReference(String field) {
         Matcher m = BOOST_PATTERN.matcher(field);
         float boost = 1;
         if (m.matches()) {
             field = m.group(1);
             boost = Float.parseFloat(m.group(2));
         }
-        return new FieldDefinition(field, phrasePrefix + field, boost);
+        return new FieldReference(field, boost);
     }
 
     @Parameter(0)
@@ -56,11 +55,10 @@ public class FieldsParsingTest {
 
     @Test
     public void parse() {
-        FieldsHelper fieldsHelper = new FieldsHelper();
-        List<FieldDefinition> definitions = new ArrayList<>();
+        List<FieldReference> definitions = new ArrayList<>();
         for (String field : fields) {
-            definitions.add(fieldDefinition(field, ""));
+            definitions.add(fieldReference(field));
         }
-        assertEquals(definitions, QueryParserHelper.parseFields(fieldsHelper, toParse, UnauthorizedAction.KEEP));
+        assertEquals(definitions, parseFields(toParse));
     }
 }

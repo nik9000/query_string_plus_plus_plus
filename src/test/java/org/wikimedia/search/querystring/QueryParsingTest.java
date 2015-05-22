@@ -3,7 +3,7 @@ package org.wikimedia.search.querystring;
 import static org.elasticsearch.common.collect.Maps.newHashMap;
 import static org.junit.Assert.assertEquals;
 import static org.wikimedia.search.querystring.FieldsParsingTest.BOOST_PATTERN;
-import static org.wikimedia.search.querystring.FieldsParsingTest.fieldDefinition;
+import static org.wikimedia.search.querystring.FieldsParsingTest.fieldReference;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +41,8 @@ import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldReference;
+import org.wikimedia.search.querystring.query.FieldUsage;
 
 import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.Iterables;
 
@@ -102,7 +104,7 @@ public class QueryParsingTest {
                 { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
                 { phrase("foo", "bar"), "\"foo bar" }, //
                 { boost(phrase("foo", "bar"), 2), "\"foo bar\"^2" }, //
-                { and(phrase("foo", "bar"), "phrase_field:baz"), "\"foo bar\" \"baz\"" }, //
+                { and(phrase("foo", "bar"), "quoted_field:baz"), "\"foo bar\" \"baz\"" }, //
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
                 { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
                 { phrase(1, "foo", "bar"), "\"foo bar\"~1" }, //
@@ -112,7 +114,7 @@ public class QueryParsingTest {
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
-                { and("foo", clause("phrase_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
+                { and("foo", clause("quoted_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
                 { query("foo~1"), "foo~.4" }, //
                 { query("foo~1"), "foo~1" }, //
                 { query("foo~2"), "foo~2" }, //
@@ -138,8 +140,8 @@ public class QueryParsingTest {
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
                 // This next one is slightly different than Cirrus
-                { query("phrase_field:10.7227"), "\"10.7227\"yay\"" }, //
-                { query("phrase_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
+                { query("quoted_field:10.7227"), "\"10.7227\"yay\"" }, //
+                { query("quoted_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
                 { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" pickles \"ffnonesenseword catapult" }, //
                 { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
@@ -151,8 +153,8 @@ public class QueryParsingTest {
                 { and(phrase("field:foo", "field:bar"), "cat"), "\"foo bar\"~garbage cat" }, //
                 { or("a:foo", "b:foo"), "foo", "fields=a|b" }, //
                 { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
-                { or(phrase("phrase_a:foo", "phrase_a:bar"), phrase("phrase_b:foo", "phrase_b:bar")), "\"foo bar\"", "fields=a|b" }, //
-                { and(or("phrase_a:foo", "phrase_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
+                { or(phrase("quoted_a:foo", "quoted_a:bar"), phrase("quoted_b:foo", "quoted_b:bar")), "\"foo bar\"", "fields=a|b" }, //
+                { and(or("quoted_a:foo", "quoted_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
                 { or("a:foo", "b:foo^5"), "foo", "fields=a|b^5" }, //
                 { and("foo^5", "bar"), "foo^5 bar" }, //
                 { and("foo^5.1", "bar"), "foo^5.1 bar" }, //
@@ -184,7 +186,6 @@ public class QueryParsingTest {
             Set<String> whitelist = new HashSet<>();
             whitelist.add("another_field");
             whitelist.add("field");
-            whitelist.add("phrase_field");
             whitelist.add("another");
             whitelist.add("andAnother");
             whitelist.add("another.field");
@@ -283,7 +284,7 @@ public class QueryParsingTest {
     private FieldsHelper fieldsHelper() {
         FieldsHelper fieldsHelper = new FieldsHelper();
         for (Map.Entry<String, String> alias : aliases.entries()) {
-            fieldsHelper.addAlias(alias.getKey(), fieldDefinition(alias.getValue(), ""));
+            fieldsHelper.addAlias(alias.getKey(), fieldReference(alias.getValue()));
         }
         if (whitelist == null) {
             fieldsHelper.whitelistAll();
@@ -299,9 +300,11 @@ public class QueryParsingTest {
     }
 
     private DefaultingQueryBuilder builder() {
-        List<FieldDefinition> fieldDefinitions = new ArrayList<>();
+        List<FieldUsage> fieldDefinitions = new ArrayList<>();
         for (String field : fields) {
-            fieldDefinitions.add(fieldDefinition(field, "phrase_"));
+            FieldReference reference = fieldReference(field);
+            fieldDefinitions.add(new FieldUsage(new FieldDefinition(reference.getName(), "quoted_" + reference.getName()), reference
+                    .getBoost()));
         }
         return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(settings, fieldDefinitions));
     }
@@ -338,7 +341,7 @@ public class QueryParsingTest {
             if (m.matches()) {
                 t = new Term(m.group(1), m.group(2));
             } else {
-                t = new Term("phrase_field", s);
+                t = new Term("quoted_field", s);
             }
             pq.add(t);
         }

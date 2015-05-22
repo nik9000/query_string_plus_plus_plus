@@ -21,8 +21,9 @@ import org.wikimedia.search.querystring.FieldsHelper.UnauthorizedAction;
 import org.wikimedia.search.querystring.QueryParserHelper;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
-import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldReference;
+import org.wikimedia.search.querystring.query.FieldUsage;
 
 /**
  * Parses QueryStringPlusPlusPlus.
@@ -122,10 +123,9 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                     if (token == FIELD_NAME) {
                                         currentFieldName = parser.currentName();
                                     } else if (token.isValue()) {
-                                        // Whitelist all alias targets, why
-                                        // would they be targets otherwise?
-                                        for (FieldDefinition target : parseFields(fieldsHelper, parser.text(), UnauthorizedAction.WHITELIST)) {
+                                        for (FieldReference target : parseFields(parser.text())) {
                                             fieldsHelper.addAlias(currentFieldName, target);
+                                            fieldsHelper.whitelist(target.getName());
                                         }
                                     }
                                 }
@@ -151,7 +151,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                     "query_string_plus_plus_plus must be provided with a [fields] or a [field] or a [fields.default]");
         }
 
-        List<FieldDefinition> defaultFields = parseFields(fieldsHelper, fields, defaultFieldUnauthorizedAction);
+        List<FieldUsage> defaultFields = fieldsHelper.resolve(parseFields(fields), defaultFieldUnauthorizedAction);
         BasicQueryBuilder basicQueryBuilder = new BasicQueryBuilder(fieldSettings, defaultFields);
         DefaultingQueryBuilder queryBuilder = new DefaultingQueryBuilder(defaultSettings, basicQueryBuilder);
         Query parsed = new QueryParserHelper(fieldsHelper, queryBuilder, defaultIsAnd, emptyIsMatchAll).parse(query);

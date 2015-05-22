@@ -14,13 +14,11 @@ import org.apache.lucene.search.WildcardQuery;
 import org.elasticsearch.index.query.support.QueryParsers;
 
 public class SingleFieldQueryBuilder implements FieldQueryBuilder {
-    private final String field;
-    private final String quotedField;
+    private final FieldUsage field;
     private final Settings settings;
 
-    public SingleFieldQueryBuilder(String field, String quotedField, Settings settings) {
+    public SingleFieldQueryBuilder(FieldUsage field, Settings settings) {
         this.field = field;
-        this.quotedField = quotedField;
         this.settings = settings;
     }
 
@@ -77,10 +75,10 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     public Term term(String term) {
-        return new Term(field, term);
+        return new Term(field.getField().getUnquoted(), term);
     }
 
     public Term quotedTerm(String term) {
-        return new Term(quotedField, term);
+        return new Term(field.getField().getQuoted(), term);
     }
 }

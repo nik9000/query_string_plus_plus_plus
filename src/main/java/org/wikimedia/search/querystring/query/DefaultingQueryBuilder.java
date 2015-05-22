@@ -50,7 +50,7 @@ public class DefaultingQueryBuilder implements QueryBuilder {
      * Creates a copy of this builder that uses the passed in fields.
      */
     @Override
-    public DefaultingQueryBuilder forFields(List<FieldDefinition> fields) {
+    public DefaultingQueryBuilder forFields(List<FieldUsage> fields) {
         return new DefaultingQueryBuilder(settings, delegate.forFields(fields));
     }
 
