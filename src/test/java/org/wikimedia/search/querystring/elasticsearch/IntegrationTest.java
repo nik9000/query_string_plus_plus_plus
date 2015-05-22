@@ -56,9 +56,37 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertHitCount(search(builder), 0);
         assertHitCount(search(builder.whitelistAll(false)), 0);
         assertHitCount(search(builder.whitelistAll(true)), 1);
+        assertHitCount(search(builder.blacklist("other")), 0);
         builder = builder("foo", "foo:bar").whitelistDefault(false);
         assertHitCount(search(builder), 0);
         assertHitCount(search(builder.whitelistAll(true)), 1);
+        assertHitCount(search(builder.blacklist("foo")), 0);
+    }
+
+    @Test
+    public void blacklist() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "foo:bar");
+        assertHitCount(search(builder), 1);
+        assertHitCount(search(builder.blacklist("foo")), 0);
+        builder = builder("foo", "bar");
+        assertHitCount(search(builder), 1);
+        // Default fields aren't effected by blacklist
+        assertHitCount(search(builder.blacklist("foo")), 1);
+    }
+
+    @Test
+    public void whitelist() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar", "other", "bar"));
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "other:bar");
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.whitelist("other")), 1);
+        builder = builder("foo", "foo:bar");
+        // By default you don't have to whitelist a default field
+        assertHitCount(search(builder), 1);
+        // But you do if you turn off whitelistDefault
+        assertHitCount(search(builder.whitelistDefault(false)), 0);
+        assertHitCount(search(builder.whitelist("foo")), 1);
     }
 
     @Test
@@ -85,6 +113,11 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertSearchHits(search(builder), "2", "1");
         builder = builder("aa, bb^2", "foo").alias("aa", "a^4").alias("bb", "b");
         assertSearchHits(search(builder), "1", "2");
+        // Aliases aren't whitelisted by default
+        builder = builder("junk", "aa:foo").alias("aa", "a");
+        assertHitCount(search(builder), 0);
+        // But you _can_ whitelist their targets
+        assertHitCount(search(builder.whitelist("a")), 1);
     }
 
     @Test

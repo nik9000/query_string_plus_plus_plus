@@ -132,7 +132,6 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                     } else if (token.isValue()) {
                                         for (FieldReference target : parseFields(parser.text())) {
                                             fieldsHelper.addAlias(currentFieldName, target);
-                                            fieldsHelper.whitelist(target.getName());
                                         }
                                     }
                                 }

@@ -2,7 +2,9 @@ package org.wikimedia.search.querystring.elasticsearch;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.index.query.BaseQueryBuilder;
@@ -14,6 +16,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private final String query;
     private final Map<String, String> aliases = new HashMap<>();
     private final Map<String, FieldDefinition> fieldDefinitions = new HashMap<>();
+    private final Set<String> whitelist = new HashSet<>();
+    private final Set<String> blacklist = new HashSet<>();
     private Boolean defaultIsAnd;
     private Boolean emptyIsMatchAll;
     private Boolean whitelistDefault;
@@ -81,7 +85,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     }
 
     /**
-     * Should the fields that are searched by default be whitelisted so users can search them explicitly.
+     * Should the fields that are searched by default be whitelisted so users
+     * can search them explicitly.
      */
     public QueryStringPlusPlusPlusBuilder whitelistDefault(boolean whitelistDefault) {
         this.whitelistDefault = whitelistDefault;
@@ -98,6 +103,26 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         return this;
     }
 
+    /**
+     * Blacklist a field so users will never be able to explicitly search for it
+     * even if it is whitelisted.
+     */
+    public QueryStringPlusPlusPlusBuilder blacklist(String field) {
+        blacklist.add(field);
+        return this;
+    }
+
+    /**
+     * Whitelist a field so users will be able to explicitly search for it if it
+     * hasn't been blacklisted. Note that if whitelistDefault is true (and it is
+     * by default) then all the fields that are searched by default are
+     * automatically whitelisted.
+     */
+    public QueryStringPlusPlusPlusBuilder whitelist(String field) {
+        whitelist.add(field);
+        return this;
+    }
+
     @Override
     public QueryStringPlusPlusPlusBuilder boost(float boost) {
         this.boost = boost;
@@ -109,7 +134,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         builder.startObject(QueryStringPlusPlusPlusParser.NAMES[0]);
 
         builder.field("query", query);
-        if (aliases.isEmpty() && fieldDefinitions.isEmpty() && whitelistDefault == null && whitelistAll == null) {
+        if (aliases.isEmpty() && fieldDefinitions.isEmpty() && whitelistDefault == null && whitelistAll == null && whitelist.isEmpty()
+                && blacklist.isEmpty()) {
             builder.field("fields", fields);
         } else {
             builder.startObject("fields");
@@ -138,6 +164,12 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
             }
             if (whitelistAll != null) {
                 builder.field("whitelist_all", whitelistAll);
+            }
+            if (!blacklist.isEmpty()) {
+                builder.field("blacklist", blacklist);
+            }
+            if (!whitelist.isEmpty()) {
+                builder.field("whitelist", whitelist);
             }
             builder.endObject();
         }
