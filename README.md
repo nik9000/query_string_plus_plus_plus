@@ -56,3 +56,16 @@ Note about the format of ```fields.default``` and the values in the
 ```"field(^boost)?(, ?field(^boost)?)*"```.
 
 [fields.format]: [docs/format_fields.md]
+
+Field resolution
+----------------
+Field resolution is a staged process:
+1. Parse the reference including the boost
+2. Expand aliases
+3. Remove fields that don't pass the whitelist or blacklist
+4. Resolve the field definitions for each field
+
+The takeaway from this is that the whitelist/blacklist process comes _after_
+alias expansion and _before_ field definition substitution. Whitelisting the
+"from" part of the alias does nothing, as does whitelisting the "quoted" or
+"unquoted" parts of the field definitions.

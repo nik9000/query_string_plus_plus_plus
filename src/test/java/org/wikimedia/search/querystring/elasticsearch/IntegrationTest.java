@@ -138,6 +138,13 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         builder = builder("aaa, bbb", "foo").alias("aaa", "aa").alias("bbb", "bb").define("aa", new FieldDefinition("a", "qa"))
                 .define("bb", new FieldDefinition("b", "qb"));
         assertHitCount(search(builder), 2);
+        // Defined fields aren't whitelisted by default
+        builder = builder("junk", "aaa:foo").alias("aaa", "aa").define("aa", new FieldDefinition("a", "qa"));
+        assertHitCount(search(builder), 0);
+        // And whitelisting any of the unquoted or quoted fields does nothing
+        assertHitCount(search(builder.whitelist("a")), 0);
+        // But whitelisting the field's name will whitelist it
+        assertHitCount(search(builder.whitelist("aa")), 1);
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
