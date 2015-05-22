@@ -43,6 +43,7 @@ Options
 ```fields.whitelist```  | Fields that can be queried.                   | list of strings                            | ```[]```
 ```fields.blacklist```  | Fields that can't be queried.                 | list of strings                            | ```[]```
 ```fields.aliases```    | Aliases from one field name to one or more field names. | object with aliases as keys and fields string as values | ```{}```
+```fields.definitions``` | Defines what actual fields are searched when searching a field name. | [object][fields.format] | ```{}```
 
 
 Note about ```fields.whitelist_defaults```: The default fields will be queried
@@ -53,3 +54,5 @@ syntax.
 Note about the format of ```fields.default``` and the values in the
 ```fields.aliases``` object: The "fields string" is of the format:
 ```"field(^boost)?(, ?field(^boost)?)*"```.
+
+[fields.format]: [docs/format_fields.md]

@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 
 import org.apache.lucene.search.Query;
+import org.elasticsearch.common.base.MoreObjects;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.query.QueryParser;
@@ -21,6 +22,7 @@ import org.wikimedia.search.querystring.FieldsHelper.UnauthorizedAction;
 import org.wikimedia.search.querystring.QueryParserHelper;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
+import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
@@ -75,7 +77,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                     boost = parser.floatValue();
                     break;
                 default:
-                    throw new QueryParsingException(parseContext.index(), "[query_string] query does not support [" + currentFieldName
+                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
                             + "]");
                 }
             } else if (token == START_OBJECT) {
@@ -97,7 +99,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                 fieldsHelper.whitelistAll();
                                 break;
                             default:
-                                throw new QueryParsingException(parseContext.index(), "[query_string] query does not support [fields."
+                                throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields."
                                         + currentFieldName + "]");
                             }
                         } else if (token == START_ARRAY) {
@@ -113,7 +115,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                 }
                                 break;
                             default:
-                                throw new QueryParsingException(parseContext.index(), "[query_string] query does not support [fields."
+                                throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields."
                                         + currentFieldName + "]");
                             }
                         } else if (token == START_OBJECT) {
@@ -129,26 +131,30 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                         }
                                     }
                                 }
+                                break;
+                            case "definitions":
+                                parseDefinitions(parseContext, parser, fieldsHelper);
+                                break;
                             default:
-                                throw new QueryParsingException(parseContext.index(), "[query_string] query does not support [fields."
+                                throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields."
                                         + currentFieldName + "]");
                             }
                         }
                     }
                     break;
                 default:
-                    throw new QueryParsingException(parseContext.index(), "[query_string] query does not support [" + currentFieldName
+                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
                             + "]");
                 }
             }
         }
 
         if (query == null) {
-            throw new QueryParsingException(parseContext.index(), "query_string_plus_plus_plus must be provided with a [query]");
+            throw new QueryParsingException(parseContext.index(), "qsppp must be provided with a [query]");
         }
         if (fields == null) {
             throw new QueryParsingException(parseContext.index(),
-                    "query_string_plus_plus_plus must be provided with a [fields] or a [field] or a [fields.default]");
+                    "qsppp must be provided with a [fields] or a [field] or a [fields.default]");
         }
 
         List<FieldUsage> defaultFields = fieldsHelper.resolve(parseFields(fields), defaultFieldUnauthorizedAction);
@@ -159,5 +165,39 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
             parsed.setBoost(boost);
         }
         return parsed;
+    }
+
+    private void parseDefinitions(QueryParseContext parseContext, XContentParser parser, FieldsHelper fieldsHelper) throws IOException {
+        String name = null;
+        XContentParser.Token token;
+        while ((token = parser.nextToken()) != END_OBJECT) {
+            if (token == FIELD_NAME) {
+                name = parser.currentName();
+            } else if (token == START_OBJECT) {
+                String currentFieldName = null;
+                String unquoted = null;
+                String quoted = null;
+                while ((token = parser.nextToken()) != END_OBJECT) {
+                    if (token == FIELD_NAME) {
+                        currentFieldName = parser.currentName();
+                    } else if (token.isValue()) {
+                        switch (currentFieldName) {
+                        case "unquoted":
+                            unquoted = parser.text();
+                            break;
+                        case "quoted":
+                            quoted = parser.text();
+                            break;
+                        default:
+                            throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions." + currentFieldName
+                                    + "]");
+                        }
+                    }
+                }
+                unquoted = MoreObjects.firstNonNull(unquoted, name);
+                quoted = MoreObjects.firstNonNull(quoted, name);
+                fieldsHelper.addField(name, new FieldDefinition(unquoted, quoted));
+            }
+        }
     }
 }
