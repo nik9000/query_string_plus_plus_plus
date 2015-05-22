@@ -134,7 +134,10 @@ public class QueryParsingTest {
                 { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
-                { query("???"), "???" }, //
+                { new TermQuery(new Term("field", "???")), "???" }, //
+                { new TermQuery(new Term("field", "*oo")), "*oo" }, //
+                { query("???"), "???", "allowLeadingWildcard=true" }, //
+                { query("*oo"), "*oo", "allowLeadingWildcard=true" }, //
                 { query("p?l"), "p?l" }, //
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
@@ -184,6 +187,7 @@ public class QueryParsingTest {
             List<String> fields = Collections.singletonList("field");
             ListMultimap<String, String> aliases = ArrayListMultimap.create();
             Set<String> whitelist = new HashSet<>();
+            boolean allowLeadingWildcard = false;
             whitelist.add("another_field");
             whitelist.add("field");
             whitelist.add("another");
@@ -241,6 +245,10 @@ public class QueryParsingTest {
                 if (extraBlacklist != null) {
                     Iterables.addAll(blacklist, Splitter.on('|').split(extraBlacklist));
                 }
+                String newAllowLeadingWildcard = settings.remove("allowLeadingWildcard");
+                if (newAllowLeadingWildcard != null) {
+                    allowLeadingWildcard = Boolean.parseBoolean(newAllowLeadingWildcard);
+                }
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -248,14 +256,15 @@ public class QueryParsingTest {
             default:
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
-            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist });
+            params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist,
+                    allowLeadingWildcard });
         }
         return params;
     }
 
     private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
-    private static final DefaultingQueryBuilder.Settings defaultSettings = new DefaultingQueryBuilder.Settings();
-    private static final FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
+    private static final DefaultingQueryBuilder.Settings UNCHANCED_DEFAULT_SETTINGS = new DefaultingQueryBuilder.Settings();
+    private static final FieldQueryBuilder.Settings UNCHANGED_SETTINGS = new FieldQueryBuilder.Settings();
     @Parameter(0)
     public String label;
     @Parameter(1)
@@ -274,6 +283,8 @@ public class QueryParsingTest {
     public Set<String> whitelist;
     @Parameter(8)
     public Set<String> blacklist;
+    @Parameter(9)
+    public boolean allowLeadingWildcard;
 
     @Test
     public void parse() {
@@ -306,7 +317,9 @@ public class QueryParsingTest {
             fieldDefinitions.add(new FieldUsage(new FieldDefinition(reference.getName(), "quoted_" + reference.getName()), reference
                     .getBoost()));
         }
-        return new DefaultingQueryBuilder(defaultSettings, new BasicQueryBuilder(settings, fieldDefinitions));
+        FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
+        settings.setAllowLeadingWildcard(allowLeadingWildcard);
+        return new DefaultingQueryBuilder(UNCHANCED_DEFAULT_SETTINGS, new BasicQueryBuilder(settings, fieldDefinitions));
     }
 
     private static BooleanQuery or(Object... clauses) {
@@ -385,19 +398,19 @@ public class QueryParsingTest {
         if (m.matches()) {
             s = m.group(1);
             int edits = Integer.parseInt(m.group(2), 10);
-            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, settings.getFuzzyPrefixLength(), settings.getFuzzyMaxExpansions(),
+            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, UNCHANGED_SETTINGS.getFuzzyPrefixLength(), UNCHANGED_SETTINGS.getFuzzyMaxExpansions(),
                     false);
-            QueryParsers.setRewriteMethod(fq, settings.getRewriteMethod());
+            QueryParsers.setRewriteMethod(fq, UNCHANGED_SETTINGS.getRewriteMethod());
             return fq;
         }
         if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
             WildcardQuery wq = new WildcardQuery(new Term(field, s));
-            QueryParsers.setRewriteMethod(wq, settings.getRewriteMethod());
+            QueryParsers.setRewriteMethod(wq, UNCHANGED_SETTINGS.getRewriteMethod());
             return wq;
         }
         if (s.endsWith("*")) {
             PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
-            QueryParsers.setRewriteMethod(pq, settings.getRewriteMethod());
+            QueryParsers.setRewriteMethod(pq, UNCHANGED_SETTINGS.getRewriteMethod());
             return pq;
         }
         return new TermQuery(new Term(field, s));

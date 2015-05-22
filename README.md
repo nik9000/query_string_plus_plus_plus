@@ -32,18 +32,19 @@ and for Elasticsearch 1.3.x:
 
 Options
 -------
-         Option         |                    Purpose                    |                    Type                    | Default
-------------------------|-----------------------------------------------|--------------------------------------------|--------
-```query```             | The query text to translate.                  | string                                     | Required
-```fields.default``` or ```fields``` | The fields to query by default.  | fields string                              | Required
-```default_operator```  | The default operator for two terms next to eachother. | ```"and"``` or ```"or"```          | ```"and"```
-```empty```             | Query to use on an empty query string         | ```"match_all"``` or ```"match_none"```    | ```"match_all"```
-```fields.whitelist_defaults``` | Should the fields in the ```fields.default``` parameter be automatically whitelisted? | boolean | ```true```
-```fields.whitelist_all``` | Should all not blacklisted fields be whitelisted? | boolean                             | ```false```
-```fields.whitelist```  | Fields that can be queried.                   | list of strings                            | ```[]```
-```fields.blacklist```  | Fields that can't be queried.                 | list of strings                            | ```[]```
-```fields.aliases```    | Aliases from one field name to one or more field names. | object with aliases as keys and fields string as values | ```{}```
-```fields.definitions``` | Defines what actual fields are searched when searching a field name. | [object][fields.format] | ```{}```
+                Option                |                    Purpose                    |                    Type                    | Default
+--------------------------------------|-----------------------------------------------|--------------------------------------------|--------
+```query```                           | The query text to translate.                  | string                                     | Required
+```fields.default``` or ```fields```  | The fields to query by default.               | fields string                              | Required
+```default_operator```                | The default operator for two terms next to eachother. | ```"and"``` or ```"or"```          | ```"and"```
+```empty```                           | Query to use on an empty query string         | ```"match_all"``` or ```"match_none"```    | ```"match_all"```
+```allow_leading_wildcard```          | Is it ok if wildcard queries start with a wildcard? | boolean                              | ```false```
+```fields.whitelist_defaults```       | Should the fields in the ```fields.default``` parameter be automatically whitelisted? | boolean | ```true```
+```fields.whitelist_all```            | Should all not blacklisted fields be whitelisted? | boolean                                | ```false```
+```fields.whitelist```                | Fields that can be queried.                   | list of strings                            | ```[]```
+```fields.blacklist```                | Fields that can't be queried.                 | list of strings                            | ```[]```
+```fields.aliases```                  | Aliases from one field name to one or more field names. | object with aliases as keys and fields string as values | ```{}```
+```fields.definitions```              | Defines what actual fields are searched when searching a field name. | [object][fields.format] | ```{}```
 
 
 Note about ```fields.whitelist_defaults```: The default fields will be queried

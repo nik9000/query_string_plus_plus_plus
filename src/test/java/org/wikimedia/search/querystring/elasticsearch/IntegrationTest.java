@@ -13,6 +13,9 @@ import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.junit.Test;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 
+/**
+ * Tests the queries over the Elasticsearch api.
+ */
 public class IntegrationTest extends ElasticsearchIntegrationTest {
     @Test
     public void basic() throws InterruptedException, ExecutionException {
@@ -38,6 +41,19 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertHitCount(search(builder), 1);
         assertHitCount(search(builder.emptyIsMatchNone()), 0);
         assertHitCount(search(builder.emptyIsMatchAll()), 1);
+    }
+
+    @Test
+    public void allowLeadingWildcard() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "*r");
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.allowLeadingWildcard(false)), 0);
+        assertHitCount(search(builder.allowLeadingWildcard(true)), 1);
+        builder = builder("foo", "?ar");
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.allowLeadingWildcard(false)), 0);
+        assertHitCount(search(builder.allowLeadingWildcard(true)), 1);
     }
 
     @Test

@@ -22,6 +22,7 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private Boolean emptyIsMatchAll;
     private Boolean whitelistDefault;
     private Boolean whitelistAll;
+    private Boolean allowLeadingWildcard;
 
     private Float boost;
 
@@ -123,6 +124,14 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         return this;
     }
 
+    /**
+     * Should queries allow a leading wildcard?
+     */
+    public QueryStringPlusPlusPlusBuilder allowLeadingWildcard(boolean allowLeadingWildcard) {
+        this.allowLeadingWildcard = allowLeadingWildcard;
+        return this;
+    }
+
     @Override
     public QueryStringPlusPlusPlusBuilder boost(float boost) {
         this.boost = boost;
@@ -181,6 +190,9 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         }
         if (emptyIsMatchAll != null) {
             builder.field("empty", emptyIsMatchAll ? "match_all" : "match_none");
+        }
+        if (allowLeadingWildcard != null) {
+            builder.field("allow_leading_wildcard", allowLeadingWildcard);
         }
         builder.endObject();
     }

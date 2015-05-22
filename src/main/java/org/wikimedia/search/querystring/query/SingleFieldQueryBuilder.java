@@ -54,14 +54,14 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         if (numEdits == 0) {
             return termQuery(term);
         }
-        FuzzyQuery query = new FuzzyQuery(term(term), numEdits, settings.getFuzzyPrefixLength(),
-                settings.getFuzzyMaxExpansions(), false);
+        FuzzyQuery query = new FuzzyQuery(term(term), numEdits, settings.getFuzzyPrefixLength(), settings.getFuzzyMaxExpansions(), false);
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
     }
 
     @Override
     public Query prefixQuery(String term) {
+        // TODO prefix queries with an empty term are some match_all thing.
         PrefixQuery query = new PrefixQuery(term(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
@@ -69,6 +69,11 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
 
     @Override
     public Query wildcardQuery(String term) {
+        if (!settings.getAllowLeadingWildcard() && (term.charAt(0) == WildcardQuery.WILDCARD_STRING
+                || term.charAt(0) == WildcardQuery.WILDCARD_CHAR)) {
+            // Leading wildcards aren't allowed so fall back to a term query.
+            return termQuery(term);
+        }
         WildcardQuery query = new WildcardQuery(term(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;

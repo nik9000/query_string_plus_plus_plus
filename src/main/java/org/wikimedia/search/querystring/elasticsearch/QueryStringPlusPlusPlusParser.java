@@ -76,6 +76,10 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 case "boost":
                     boost = parser.floatValue();
                     break;
+                case "allow_leading_wildcard":
+                case "allowLeadingWildcard":
+                    fieldSettings.setAllowLeadingWildcard(parser.booleanValue());
+                    break;
                 default:
                     throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
                             + "]");

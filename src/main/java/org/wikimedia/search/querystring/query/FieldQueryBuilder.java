@@ -28,6 +28,7 @@ public interface FieldQueryBuilder {
         private int fuzzyPrefixLength = FuzzyQuery.defaultPrefixLength;
         private RewriteMethod rewriteMethod;
         private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
+        private boolean allowLeadingWildcard;
 
         public int getMaxPhraseSlop() {
             return maxPhraseSlop;
@@ -59,6 +60,23 @@ public interface FieldQueryBuilder {
 
         public void setFuzzyMaxExpansions(int fuzzyMaxExpansions) {
             this.fuzzyMaxExpansions = fuzzyMaxExpansions;
+        }
+
+        /**
+         * Is it ok if a wildcard search starts with a wildcard? Those are much
+         * more expensive then when they don't start with a wildcard.
+         */
+        public boolean getAllowLeadingWildcard() {
+            return allowLeadingWildcard;
+        }
+
+        /**
+         * Set whether it is ok if a wildcard search starts with a wildcard?
+         * Those are much more expensive then when they don't start with a
+         * wildcard.
+         */
+        public void setAllowLeadingWildcard(boolean allowLeadingWildcard) {
+            this.allowLeadingWildcard = allowLeadingWildcard;
         }
     }
 }
