@@ -66,6 +66,11 @@ public class BasicQueryBuilder implements QueryBuilder {
         return fieldQueryBuilder.wildcardQuery(term);
     }
 
+    @Override
+    public String toString() {
+        return fieldQueryBuilder.toString();
+    }
+
     /**
      * Builds the field queries based on field definitions.
      */

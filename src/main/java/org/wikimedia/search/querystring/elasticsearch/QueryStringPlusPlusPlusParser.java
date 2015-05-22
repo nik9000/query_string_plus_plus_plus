@@ -92,11 +92,16 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                                 fields = parser.text();
                                 break;
                             case "whitelist_default":
+                            case "whitelistDefault":
                                 if (!parser.booleanValue()) {
                                     defaultFieldUnauthorizedAction = UnauthorizedAction.KEEP;
                                 }
+                                break;
                             case "whitelist_all":
-                                fieldsHelper.whitelistAll();
+                            case "whitelistAll":
+                                if (parser.booleanValue()) {
+                                    fieldsHelper.whitelistAll();
+                                }
                                 break;
                             default:
                                 throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields."

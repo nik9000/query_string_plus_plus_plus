@@ -40,14 +40,12 @@ public class FieldsHelper {
     }
 
     /**
-     * Whitelist a field so it can be queried. If whitelistAll has been called
-     * this will undo its effects.
+     * Whitelist a field so it can be queried. If whitelistAll this is a noop.
      */
     public void whitelist(String field) {
-        if (whitelist == null) {
-            whitelist = new HashSet<>();
+        if (whitelist != null) {
+            whitelist.add(field);
         }
-        whitelist.add(field);
     }
 
     /**
@@ -113,6 +111,7 @@ public class FieldsHelper {
                 // Intentional fallthrough
             case KEEP:
                 results.add(buildNoAliasResult(reference));
+                break;
             case REMOVE:
                 if (!allowed(reference.getName())) {
                     return;

@@ -54,6 +54,11 @@ public class DefaultingQueryBuilder implements QueryBuilder {
         return new DefaultingQueryBuilder(settings, delegate.forFields(fields));
     }
 
+    @Override
+    public String toString() {
+        return delegate.toString();
+    }
+
     // These are all auto-generated and just delegate to delegate
     @Override
     public Query termQuery(String term) {

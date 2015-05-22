@@ -17,46 +17,57 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     @Test
     public void basic() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
-        SearchResponse response = client().prepareSearch("test").setQuery(builder("foo", "bar")).get();
-        assertSearchHits(response, "1");
-        response = client().prepareSearch("test").setQuery(builder("foo", "bort")).get();
-        assertHitCount(response, 0);
-        response = client().prepareSearch("test").setQuery(builder("bort", "bar")).get();
-        assertHitCount(response, 0);
+        assertSearchHits(search(builder("foo", "bar")), "1");
+        assertHitCount(search(builder("foo", "bort")), 0);
+        assertHitCount(search(builder("bort", "bar")), 0);
     }
 
     @Test
     public void defaultOperator() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
-        SearchResponse response = client().prepareSearch("test").setQuery(builder("foo", "bar baz")).get();
-        assertHitCount(response, 0);
-        response = client().prepareSearch("test").setQuery(builder("foo", "bar baz").defaultIsOr()).get();
-        assertHitCount(response, 1);
-        response = client().prepareSearch("test").setQuery(builder("foo", "bar baz").defaultIsAnd()).get();
-        assertHitCount(response, 0);
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "bar baz");
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.defaultIsOr()), 1);
+        assertHitCount(search(builder.defaultIsAnd()), 0);
     }
 
     @Test
     public void emptyQuery() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
-        SearchResponse response = client().prepareSearch("test").setQuery(builder("foo", "")).get();
-        assertHitCount(response, 1);
-        response = client().prepareSearch("test").setQuery(builder("foo", "").emptyIsMatchNone()).get();
-        assertHitCount(response, 0);
-        response = client().prepareSearch("test").setQuery(builder("foo", "").emptyIsMatchAll()).get();
-        assertHitCount(response, 1);
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "");
+        assertHitCount(search(builder), 1);
+        assertHitCount(search(builder.emptyIsMatchNone()), 0);
+        assertHitCount(search(builder.emptyIsMatchAll()), 1);
+    }
+
+    @Test
+    public void whitelistDefault() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar"));
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "foo:bar");
+        assertHitCount(search(builder), 1);
+        assertHitCount(search(builder.whitelistDefault(false)), 0);
+        assertHitCount(search(builder.whitelistDefault(true)), 1);
+    }
+
+    @Test
+    public void whitelistAll() throws InterruptedException, ExecutionException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar", "other", "bar"));
+        QueryStringPlusPlusPlusBuilder builder = builder("foo", "other:bar");
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.whitelistAll(false)), 0);
+        assertHitCount(search(builder.whitelistAll(true)), 1);
+        builder = builder("foo", "foo:bar").whitelistDefault(false);
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.whitelistAll(true)), 1);
     }
 
     @Test
     public void fields() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("a", "foo"), //
                 client().prepareIndex("test", "test", "2").setSource("b", "foo"));
-        SearchResponse response = client().prepareSearch("test").setQuery(builder("a, b", "foo")).get();
-        assertHitCount(response, 2);
-        response = client().prepareSearch("test").setQuery(builder("a, b^2", "foo")).get();
-        assertSearchHits(response, "2", "1");
-        response = client().prepareSearch("test").setQuery(builder("a^2, b", "foo")).get();
-        assertSearchHits(response, "1", "2");
+        assertHitCount(search(builder("a, b", "foo")), 2);
+        assertSearchHits(search(builder("a, b^2", "foo")), "2", "1");
+        assertSearchHits(search(builder("a^2, b", "foo")), "1", "2");
     }
 
     @Test
@@ -67,17 +78,13 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         SearchResponse response = client().prepareSearch("test").setQuery(builder).get();
         assertSearchHits(response, "1");
         builder = builder("aa, bb", "foo").alias("bb", "b");
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertSearchHits(response, "2");
+        assertSearchHits(search(builder), "2");
         builder = builder("aa, bb^2", "foo").alias("aa", "a").alias("bb", "b");
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertSearchHits(response, "2", "1");
+        assertSearchHits(search(builder), "2", "1");
         builder = builder("aa, bb", "foo").alias("aa", "a").alias("bb", "b^2");
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertSearchHits(response, "2", "1");
+        assertSearchHits(search(builder), "2", "1");
         builder = builder("aa, bb^2", "foo").alias("aa", "a^4").alias("bb", "b");
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertSearchHits(response, "1", "2");
+        assertSearchHits(search(builder), "1", "2");
     }
 
     @Test
@@ -88,21 +95,16 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         SearchResponse response = client().prepareSearch("test").setQuery(builder).get();
         assertSearchHits(response, "1");
         builder = builder("aa, bb", "foo").define("bb", new FieldDefinition("b", "qb"));
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertSearchHits(response, "2");
+        assertSearchHits(search(builder), "2");
         builder = builder("aa, bb", "foo").define("aa", new FieldDefinition("a", "qa")).define("bb", new FieldDefinition("b", "qb"));
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertHitCount(response, 2);
+        assertHitCount(search(builder), 2);
         builder = builder("aa, bb", "foo").define("a", new FieldDefinition("ua", "qa")).define("b", new FieldDefinition("ub", "qb"));
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertHitCount(response, 0);
+        assertHitCount(search(builder), 0);
         builder = builder("aa, bb", "\"foo\"").define("aa", new FieldDefinition("ua", "a")).define("bb", new FieldDefinition("ub", "b"));
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertHitCount(response, 2);
+        assertHitCount(search(builder), 2);
         builder = builder("aaa, bbb", "foo").alias("aaa", "aa").alias("bbb", "bb").define("aa", new FieldDefinition("a", "qa"))
                 .define("bb", new FieldDefinition("b", "qb"));
-        response = client().prepareSearch("test").setQuery(builder).get();
-        assertHitCount(response, 2);
+        assertHitCount(search(builder), 2);
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
@@ -118,4 +120,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
                 .put("plugins." + PluginsService.LOAD_PLUGIN_FROM_CLASSPATH, true).build();
     }
 
+    private SearchResponse search(QueryStringPlusPlusPlusBuilder builder) {
+        return client().prepareSearch("test").setQuery(builder).get();
+    }
 }

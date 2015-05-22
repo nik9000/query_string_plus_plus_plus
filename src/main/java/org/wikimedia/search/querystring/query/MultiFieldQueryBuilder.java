@@ -61,6 +61,11 @@ public class MultiFieldQueryBuilder implements FieldQueryBuilder {
         return bq;
     }
 
+    @Override
+    public String toString() {
+        return fieldDelegates.toString();
+    }
+
     private BooleanQuery or() {
         BooleanQuery bq = new BooleanQuery();
         bq.setMinimumNumberShouldMatch(1);

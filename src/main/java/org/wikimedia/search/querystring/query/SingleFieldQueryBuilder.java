@@ -81,4 +81,9 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     public Term quotedTerm(String term) {
         return new Term(field.getField().getQuoted(), term);
     }
+
+    @Override
+    public String toString() {
+        return field.toString();
+    }
 }

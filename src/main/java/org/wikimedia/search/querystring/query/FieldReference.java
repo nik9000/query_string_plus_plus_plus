@@ -22,6 +22,14 @@ public class FieldReference {
     }
 
     @Override
+    public String toString() {
+        if (boost == 1) {
+            return name;
+        }
+        return name + '^' + boost;
+    }
+
+    @Override
     public int hashCode() {
         final int prime = 31;
         int result = 1;

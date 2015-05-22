@@ -173,7 +173,6 @@ public class QueryParserHelper {
             if (fieldCtx == null) {
                 return visit(ctx.boosted());
             }
-            DefaultingQueryBuilder lastBuilder = builder;
             List<FieldUsage> fields = fieldsHelper.resolve(fieldsFromContext(fieldCtx), UnauthorizedAction.REMOVE);
             if (fields.isEmpty()) {
                 /*
@@ -185,6 +184,7 @@ public class QueryParserHelper {
                  */
                 return wrap(builder.termQuery(ctx.getText()));
             }
+            DefaultingQueryBuilder lastBuilder = builder;
             builder = builder.forFields(fields);
             try {
                 return visit(ctx.boosted());

@@ -14,8 +14,10 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private final String query;
     private final Map<String, String> aliases = new HashMap<>();
     private final Map<String, FieldDefinition> fieldDefinitions = new HashMap<>();
-    private boolean defaultIsAnd = true;
-    private boolean emptyIsMatchAll = true;
+    private Boolean defaultIsAnd;
+    private Boolean emptyIsMatchAll;
+    private Boolean whitelistDefault;
+    private Boolean whitelistAll;
 
     private Float boost;
 
@@ -78,6 +80,24 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         return this;
     }
 
+    /**
+     * Should the fields that are searched by default be whitelisted so users can search them explicitly.
+     */
+    public QueryStringPlusPlusPlusBuilder whitelistDefault(boolean whitelistDefault) {
+        this.whitelistDefault = whitelistDefault;
+        return this;
+    }
+
+    /**
+     * Should all not explicitly blacklisted fields be whitelisted? Note that
+     * setting this to true for user written queries can be dangerous. Think
+     * this through. Are you sure?
+     */
+    public QueryStringPlusPlusPlusBuilder whitelistAll(boolean whitelistAll) {
+        this.whitelistAll = whitelistAll;
+        return this;
+    }
+
     @Override
     public QueryStringPlusPlusPlusBuilder boost(float boost) {
         this.boost = boost;
@@ -89,7 +109,7 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         builder.startObject(QueryStringPlusPlusPlusParser.NAMES[0]);
 
         builder.field("query", query);
-        if (aliases.isEmpty() && fieldDefinitions.isEmpty()) {
+        if (aliases.isEmpty() && fieldDefinitions.isEmpty() && whitelistDefault == null && whitelistAll == null) {
             builder.field("fields", fields);
         } else {
             builder.startObject("fields");
@@ -113,16 +133,22 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
                 }
                 builder.endObject();
             }
+            if (whitelistDefault != null) {
+                builder.field("whitelist_default", whitelistDefault);
+            }
+            if (whitelistAll != null) {
+                builder.field("whitelist_all", whitelistAll);
+            }
             builder.endObject();
         }
         if (boost != null) {
             builder.field("boost", boost);
         }
-        if (!defaultIsAnd) {
-            builder.field("default_operator", "or");
+        if (defaultIsAnd != null) {
+            builder.field("default_operator", defaultIsAnd ? "and" : "or");
         }
-        if (!emptyIsMatchAll) {
-            builder.field("empty", "match_none");
+        if (emptyIsMatchAll != null) {
+            builder.field("empty", emptyIsMatchAll ? "match_all" : "match_none");
         }
         builder.endObject();
     }
