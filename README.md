@@ -44,7 +44,7 @@ Options
 ```fields.whitelist```                | Fields that can be queried.                   | list of strings                            | ```[]```
 ```fields.blacklist```                | Fields that can't be queried.                 | list of strings                            | ```[]```
 ```fields.aliases```                  | Aliases from one field name to one or more field names. | object with aliases as keys and fields string as values | ```{}```
-```fields.definitions```              | Defines what actual fields are searched when searching a field name. | [object][fields.format] | ```{}```
+```fields.definitions```              | Defines what actual fields are searched when searching a field name. | [object][definitions.format] | ```{}```
 
 
 Note about ```fields.whitelist_defaults```: The default fields will be queried
@@ -55,8 +55,6 @@ syntax.
 Note about the format of ```fields.default``` and the values in the
 ```fields.aliases``` object: The "fields string" is of the format:
 ```"field(^boost)?(, ?field(^boost)?)*"```.
-
-[fields.format]: [docs/format_fields.md]
 
 Field resolution
 ----------------
@@ -70,3 +68,5 @@ The takeaway from this is that the whitelist/blacklist process comes _after_
 alias expansion and _before_ field definition substitution. Whitelisting the
 "from" part of the alias does nothing, as does whitelisting the "quoted" or
 "unquoted" parts of the field definitions.
+
+[definitions.format]: [docs/format_definitions.md]

@@ -42,7 +42,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
     public Query parse(QueryParseContext parseContext) throws IOException, QueryParsingException {
         DefaultingQueryBuilder.Settings defaultSettings = new DefaultingQueryBuilder.Settings();
         FieldQueryBuilder.Settings fieldSettings = new FieldQueryBuilder.Settings();
-        FieldsHelper fieldsHelper = new FieldsHelper();
+        FieldsHelper fieldsHelper = new FieldsHelper(new ElasticsearchFieldDetector(parseContext));
         boolean defaultIsAnd = true;
         boolean emptyIsMatchAll = true;
         UnauthorizedAction defaultFieldUnauthorizedAction = UnauthorizedAction.WHITELIST;
@@ -183,18 +183,23 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 name = parser.currentName();
             } else if (token == START_OBJECT) {
                 String currentFieldName = null;
-                String unquoted = null;
-                String quoted = null;
+                String standard= null;
+                String precise = null;
+                String reversePrecise = null;
                 while ((token = parser.nextToken()) != END_OBJECT) {
                     if (token == FIELD_NAME) {
                         currentFieldName = parser.currentName();
                     } else if (token.isValue()) {
                         switch (currentFieldName) {
-                        case "unquoted":
-                            unquoted = parser.text();
+                        case "standard":
+                            standard = parser.text();
                             break;
-                        case "quoted":
-                            quoted = parser.text();
+                        case "precise":
+                            precise = parser.text();
+                            break;
+                        case "reverse_precise":
+                        case "reversePrecise":
+                            reversePrecise = parser.text();
                             break;
                         default:
                             throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions." + currentFieldName
@@ -202,9 +207,8 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                         }
                     }
                 }
-                unquoted = MoreObjects.firstNonNull(unquoted, name);
-                quoted = MoreObjects.firstNonNull(quoted, name);
-                fieldsHelper.addField(name, new FieldDefinition(unquoted, quoted));
+                standard = MoreObjects.firstNonNull(standard, name);
+                fieldsHelper.addField(name, new FieldDefinition(standard, precise, reversePrecise));
             }
         }
     }

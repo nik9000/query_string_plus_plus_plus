@@ -1,5 +1,7 @@
 package org.wikimedia.search.querystring;
 
+import static org.elasticsearch.common.base.MoreObjects.firstNonNull;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,12 +32,21 @@ public class FieldsHelper {
     private final Map<String, FieldDefinition> fields = new HashMap<>();
     private final ListMultimap<String, FieldReference> aliases = ArrayListMultimap.create();
     private final Set<String> blacklist = new HashSet<>();
+    private final FieldDetector resolver;
     private Set<String> whitelist = new HashSet<>();
+
+    public FieldsHelper(FieldDetector resolver) {
+        this.resolver = resolver;
+    }
 
     /**
      * Defines a field for later use.
      */
     public void addField(String name, FieldDefinition definition) {
+        definition = new FieldDefinition(
+                firstNonNull(resolver.resolveIndexName(definition.getStandard()), definition.getStandard()),
+                resolver.resolveIndexName(definition.getPrecise()),
+                resolver.resolveIndexName(definition.getReversePrecise()));
         fields.put(name, definition);
     }
 
@@ -155,6 +166,9 @@ public class FieldsHelper {
 
     private FieldDefinition definition(String field) {
         FieldDefinition result = fields.get(field);
-        return result == null ? new FieldDefinition(field, field) : result;
+        return result == null ? new FieldDefinition(
+                firstNonNull(resolver.resolveIndexName(field), field),
+                resolver.resolveIndexName(field + ".precise"),
+                resolver.resolveIndexName(field + ".reverse_precise")) : result;
     }
 }

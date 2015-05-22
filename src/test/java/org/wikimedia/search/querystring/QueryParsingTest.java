@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -104,7 +105,7 @@ public class QueryParsingTest {
                 { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
                 { phrase("foo", "bar"), "\"foo bar" }, //
                 { boost(phrase("foo", "bar"), 2), "\"foo bar\"^2" }, //
-                { and(phrase("foo", "bar"), "quoted_field:baz"), "\"foo bar\" \"baz\"" }, //
+                { and(phrase("foo", "bar"), "precise_field:baz"), "\"foo bar\" \"baz\"" }, //
                 { and(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" \"bort bop\"" }, //
                 { or(phrase("foo", "bar", "baz"), phrase("bort", "bop")), "\"foo bar baz\" OR \"bort bop\"" }, //
                 { phrase(1, "foo", "bar"), "\"foo bar\"~1" }, //
@@ -114,7 +115,7 @@ public class QueryParsingTest {
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
-                { and("foo", clause("quoted_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
+                { and("foo", clause("precise_field:bar", Occur.MUST_NOT)), "foo -\"bar\"" }, //
                 { query("foo~1"), "foo~.4" }, //
                 { query("foo~1"), "foo~1" }, //
                 { query("foo~2"), "foo~2" }, //
@@ -138,13 +139,17 @@ public class QueryParsingTest {
                 { new TermQuery(new Term("field", "*oo")), "*oo" }, //
                 { query("???"), "???", "allowLeadingWildcard=true" }, //
                 { query("*oo"), "*oo", "allowLeadingWildcard=true" }, //
+                { query("field_reverse:oo?"), "?oo", "reverseFields=field->field_reverse" }, //
+                { new WildcardQuery(new Term("field_reverse", "oo*")), "*oo", "reverseFields=field->field_reverse" }, //
+                { new TermQuery(new Term("field", "?o?")), "?o?", "reverseFields=field->field_reverse" }, //
+                { new TermQuery(new Term("field", "*o*")), "*o*", "reverseFields=field->field_reverse" }, //
                 { query("p?l"), "p?l" }, //
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
                 // This next one is slightly different than Cirrus
-                { query("quoted_field:10.7227"), "\"10.7227\"yay\"" }, //
-                { query("quoted_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
+                { query("precise_field:10.7227"), "\"10.7227\"yay\"" }, //
+                { query("precise_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
                 { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" pickles \"ffnonesenseword catapult" }, //
                 { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
@@ -156,8 +161,8 @@ public class QueryParsingTest {
                 { and(phrase("field:foo", "field:bar"), "cat"), "\"foo bar\"~garbage cat" }, //
                 { or("a:foo", "b:foo"), "foo", "fields=a|b" }, //
                 { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
-                { or(phrase("quoted_a:foo", "quoted_a:bar"), phrase("quoted_b:foo", "quoted_b:bar")), "\"foo bar\"", "fields=a|b" }, //
-                { and(or("quoted_a:foo", "quoted_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
+                { or(phrase("precise_a:foo", "precise_a:bar"), phrase("precise_b:foo", "precise_b:bar")), "\"foo bar\"", "fields=a|b" }, //
+                { and(or("precise_a:foo", "precise_b:foo"), or("a:bar", "b:bar")), "\"foo\" bar", "fields=a|b" }, //
                 { or("a:foo", "b:foo^5"), "foo", "fields=a|b^5" }, //
                 { and("foo^5", "bar"), "foo^5 bar" }, //
                 { and("foo^5.1", "bar"), "foo^5.1 bar" }, //
@@ -187,7 +192,6 @@ public class QueryParsingTest {
             List<String> fields = Collections.singletonList("field");
             ListMultimap<String, String> aliases = ArrayListMultimap.create();
             Set<String> whitelist = new HashSet<>();
-            boolean allowLeadingWildcard = false;
             whitelist.add("another_field");
             whitelist.add("field");
             whitelist.add("another");
@@ -198,6 +202,8 @@ public class QueryParsingTest {
             whitelist.add("C");
             Set<String> blacklist = new HashSet<>();
             blacklist.add("blacklisted");
+            boolean allowLeadingWildcard = false;
+            Map<String, String> reverseFields = new HashMap<>();
             String label;
             switch (param.length) {
             case 2:
@@ -249,6 +255,10 @@ public class QueryParsingTest {
                 if (newAllowLeadingWildcard != null) {
                     allowLeadingWildcard = Boolean.parseBoolean(newAllowLeadingWildcard);
                 }
+                String extraReverseFields = settings.remove("reverseFields");
+                if (extraReverseFields != null) {
+                    reverseFields.putAll(Splitter.on('|').withKeyValueSeparator("->").split(extraReverseFields));
+                }
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -257,7 +267,7 @@ public class QueryParsingTest {
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
             params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist,
-                    allowLeadingWildcard });
+                    allowLeadingWildcard, reverseFields });
         }
         return params;
     }
@@ -285,6 +295,8 @@ public class QueryParsingTest {
     public Set<String> blacklist;
     @Parameter(9)
     public boolean allowLeadingWildcard;
+    @Parameter(10)
+    public Map<String, String> reverseFields;
 
     @Test
     public void parse() {
@@ -293,7 +305,7 @@ public class QueryParsingTest {
     }
 
     private FieldsHelper fieldsHelper() {
-        FieldsHelper fieldsHelper = new FieldsHelper();
+        FieldsHelper fieldsHelper = new FieldsHelper(new FieldDetector.Noop());
         for (Map.Entry<String, String> alias : aliases.entries()) {
             fieldsHelper.addAlias(alias.getKey(), fieldReference(alias.getValue()));
         }
@@ -311,15 +323,16 @@ public class QueryParsingTest {
     }
 
     private DefaultingQueryBuilder builder() {
-        List<FieldUsage> fieldDefinitions = new ArrayList<>();
+        List<FieldUsage> usages = new ArrayList<>();
         for (String field : fields) {
             FieldReference reference = fieldReference(field);
-            fieldDefinitions.add(new FieldUsage(new FieldDefinition(reference.getName(), "quoted_" + reference.getName()), reference
-                    .getBoost()));
+            FieldDefinition definition = new FieldDefinition(reference.getName(), "precise_" + reference.getName(),
+                    reverseFields.get(reference.getName()));
+            usages.add(new FieldUsage(definition, reference.getBoost()));
         }
         FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
         settings.setAllowLeadingWildcard(allowLeadingWildcard);
-        return new DefaultingQueryBuilder(UNCHANCED_DEFAULT_SETTINGS, new BasicQueryBuilder(settings, fieldDefinitions));
+        return new DefaultingQueryBuilder(UNCHANCED_DEFAULT_SETTINGS, new BasicQueryBuilder(settings, usages));
     }
 
     private static BooleanQuery or(Object... clauses) {
@@ -354,7 +367,7 @@ public class QueryParsingTest {
             if (m.matches()) {
                 t = new Term(m.group(1), m.group(2));
             } else {
-                t = new Term("quoted_field", s);
+                t = new Term("precise_field", s);
             }
             pq.add(t);
         }
@@ -389,26 +402,30 @@ public class QueryParsingTest {
 
     private static Query unboostedQueryFromString(String s) {
         String field = "field";
+        boolean specifiedField = false;
         Matcher m = FIELD_PATTERN.matcher(s);
         if (m.matches()) {
             field = m.group(1);
             s = m.group(2);
+            specifiedField = true;
         }
         m = Pattern.compile("(.+)~(\\d+)").matcher(s);
         if (m.matches()) {
             s = m.group(1);
             int edits = Integer.parseInt(m.group(2), 10);
-            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, UNCHANGED_SETTINGS.getFuzzyPrefixLength(), UNCHANGED_SETTINGS.getFuzzyMaxExpansions(),
-                    false);
+            FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, UNCHANGED_SETTINGS.getFuzzyPrefixLength(),
+                    UNCHANGED_SETTINGS.getFuzzyMaxExpansions(), false);
             QueryParsers.setRewriteMethod(fq, UNCHANGED_SETTINGS.getRewriteMethod());
             return fq;
         }
         if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
+            field = !specifiedField ? "precise_" + field : field;
             WildcardQuery wq = new WildcardQuery(new Term(field, s));
             QueryParsers.setRewriteMethod(wq, UNCHANGED_SETTINGS.getRewriteMethod());
             return wq;
         }
         if (s.endsWith("*")) {
+            field = !specifiedField ? "precise_" + field : field;
             PrefixQuery pq = new PrefixQuery(new Term(field, s.substring(0, s.length() - 1)));
             QueryParsers.setRewriteMethod(pq, UNCHANGED_SETTINGS.getRewriteMethod());
             return pq;

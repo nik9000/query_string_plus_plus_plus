@@ -44,7 +44,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
 
     /**
      * Define how a field name is resolved to actual fields for query. Useful
-     * for pointing "quoted terms" to a less-stemmed field.
+     * for pointing "quoted terms" to a more precisely analyzed field or to
+     * enable the reverse field optimization for wildcard matching.
      */
     public QueryStringPlusPlusPlusBuilder define(String field, FieldDefinition definition) {
         fieldDefinitions.put(field, definition);
@@ -158,11 +159,14 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
                     String name = entry.getKey();
                     FieldDefinition definition = entry.getValue();
                     builder.startObject(name);
-                    if (!name.equals(definition.getUnquoted())) {
-                        builder.field("unquoted", definition.getUnquoted());
+                    if (!name.equals(definition.getStandard())) {
+                        builder.field("standard", definition.getStandard());
                     }
-                    if (!name.equals(definition.getQuoted())) {
-                        builder.field("quoted", definition.getQuoted());
+                    if (!name.equals(definition.getPrecise())) {
+                        builder.field("precise", definition.getPrecise());
+                    }
+                    if (!name.equals(definition.getReversePrecise())) {
+                        builder.field("reverse_precise", definition.getReversePrecise());
                     }
                     builder.endObject();
                 }

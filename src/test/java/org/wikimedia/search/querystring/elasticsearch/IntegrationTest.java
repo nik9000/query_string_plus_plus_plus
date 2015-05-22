@@ -1,13 +1,17 @@
 package org.wikimedia.search.querystring.elasticsearch;
 
+import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertHitCount;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertSearchHits;
 
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 
 import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.plugins.PluginsService;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.junit.Test;
@@ -140,14 +144,14 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     public void fieldDefinitions() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("a", "foo"), //
                 client().prepareIndex("test", "test", "2").setSource("b", "foo"));
-        QueryStringPlusPlusPlusBuilder builder = builder("aa, bb", "foo").define("aa", new FieldDefinition("a", "qa"));
+        QueryStringPlusPlusPlusBuilder builder = builder("aa, bb", "foo").define("aa", new FieldDefinition("a"));
         SearchResponse response = client().prepareSearch("test").setQuery(builder).get();
         assertSearchHits(response, "1");
-        builder = builder("aa, bb", "foo").define("bb", new FieldDefinition("b", "qb"));
+        builder = builder("aa, bb", "foo").define("bb", new FieldDefinition("b"));
         assertSearchHits(search(builder), "2");
-        builder = builder("aa, bb", "foo").define("aa", new FieldDefinition("a", "qa")).define("bb", new FieldDefinition("b", "qb"));
+        builder = builder("aa, bb", "foo").define("aa", new FieldDefinition("a")).define("bb", new FieldDefinition("b"));
         assertHitCount(search(builder), 2);
-        builder = builder("aa, bb", "foo").define("a", new FieldDefinition("ua", "qa")).define("b", new FieldDefinition("ub", "qb"));
+        builder = builder("aa, bb", "foo").define("a", new FieldDefinition("ua")).define("b", new FieldDefinition("ub"));
         assertHitCount(search(builder), 0);
         builder = builder("aa, bb", "\"foo\"").define("aa", new FieldDefinition("ua", "a")).define("bb", new FieldDefinition("ub", "b"));
         assertHitCount(search(builder), 2);
@@ -161,6 +165,29 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertHitCount(search(builder.whitelist("a")), 0);
         // But whitelisting the field's name will whitelist it
         assertHitCount(search(builder.whitelist("aa")), 1);
+    }
+
+    @Test
+    public void multiFields() throws InterruptedException, ExecutionException, IOException {
+        buildPreciseAndReverseIndex();
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
+        assertHitCount(search(builder("explicit", "foo")), 1);
+    }
+
+    @Test
+    public void preciseAndReversePrecise() throws InterruptedException, ExecutionException, IOException {
+        buildPreciseAndReverseIndex();
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
+        QueryStringPlusPlusPlusBuilder builder = builder("explicit", "*oo");
+        assertHitCount(search(builder), 0);
+        builder.define("explicit", new FieldDefinition("explicit", "explicit.break_auto_precise", "explicit.break_auto_reverse_precise"));
+        assertHitCount(search(builder), 1);
+        /*
+         * No need to define the auto field - its subfields follow a pattern the
+         * query automatically detects.
+         */
+        builder = builder("auto", "*oo");
+        assertHitCount(search(builder), 1);
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
@@ -178,5 +205,48 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
 
     private SearchResponse search(QueryStringPlusPlusPlusBuilder builder) {
         return client().prepareSearch("test").setQuery(builder).get();
+    }
+
+    private void buildPreciseAndReverseIndex() throws IOException {
+        XContentBuilder mapping = jsonBuilder().startObject();
+        mapping.startObject("test").startObject("properties");
+        fieldWithSubFields(mapping, "explicit", true);
+        fieldWithSubFields(mapping, "auto", false);
+        mapping.endObject().endObject().endObject();
+
+        XContentBuilder settings = jsonBuilder().startObject().startObject("index");
+        settings.startObject("analysis").startObject("analyzer");
+        {
+            settings.startObject("reverse_standard");
+            {
+                settings.field("tokenizer", "standard");
+                settings.field("filter", "standard", "lowercase", "reverse");
+            }
+            settings.endObject();
+        }
+        settings.endObject().endObject();
+        assertAcked(prepareCreate("test").setSettings(settings).addMapping("test", mapping));
+        ensureYellow();
+    }
+
+    private void fieldWithSubFields(XContentBuilder mapping, String name, boolean breakAutoDetection) throws IOException {
+        mapping.startObject(name);
+        mapping.field("type", "string");
+        mapping.field("analyzer", "english");
+        {
+            mapping.startObject("fields");
+            String namePrefix = breakAutoDetection ? "break_auto_" : "";
+            field(mapping, namePrefix + "precise", "standard");
+            field(mapping, namePrefix + "reverse_precise", "reverse_standard");
+            mapping.endObject();
+        }
+        mapping.endObject();
+    }
+
+    private void field(XContentBuilder mapping, String name, String analyzer) throws IOException {
+        mapping.startObject(name);
+        mapping.field("type", "string");
+        mapping.field("analyzer", analyzer);
+        mapping.endObject();
     }
 }
