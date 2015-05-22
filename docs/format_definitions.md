@@ -4,7 +4,8 @@ The ```fields.definitions``` parameter looks like:
     "field_name": {
         "standard": "field_name",
         "precise": "field_name.precise",
-        "reverse_precise": "field_name.reverse_precise"
+        "reverse_precise": "field_name.reverse_precise",
+        "prefix_precise": "field_name.prefix"
     }
 }
 ```

@@ -50,6 +50,7 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
 
     @Override
     public Query fuzzyQuery(String term, float similaritySpec) {
+        // TODO it should totally be possible to rewrite some fuzzy
         @SuppressWarnings("deprecation")
         int numEdits = FuzzyQuery.floatToEdits(similaritySpec, term.codePointCount(0, term.length()));
         if (numEdits == 0) {
@@ -63,6 +64,12 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     @Override
     public Query prefixQuery(String term) {
         // TODO prefix queries with an empty term are some match_all thing.
+        if (field.getField().getPrefixPrecise() != null) {
+            return new TermQuery(new Term(field.getField().getPrefixPrecise(), term));
+        }
+        if (!settings.getAllowPrefix()) {
+            return termQuery(term + "*");
+        }
         PrefixQuery query = new PrefixQuery(preciseTerm(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;

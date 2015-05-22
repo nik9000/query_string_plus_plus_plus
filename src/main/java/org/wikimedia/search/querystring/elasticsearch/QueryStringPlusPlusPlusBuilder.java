@@ -23,6 +23,7 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private Boolean whitelistDefault;
     private Boolean whitelistAll;
     private Boolean allowLeadingWildcard;
+    private Boolean allowPrefix;
 
     private Float boost;
 
@@ -126,10 +127,18 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     }
 
     /**
-     * Should queries allow a leading wildcard?
+     * Should queries allow a leading wildcard? Defaults to false.
      */
     public QueryStringPlusPlusPlusBuilder allowLeadingWildcard(boolean allowLeadingWildcard) {
         this.allowLeadingWildcard = allowLeadingWildcard;
+        return this;
+    }
+
+    /**
+     * Should queries allow a prefix search? Defaults to true.
+     */
+    public QueryStringPlusPlusPlusBuilder allowPrefix(boolean allowPrefix) {
+        this.allowPrefix = allowPrefix;
         return this;
     }
 
@@ -159,14 +168,17 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
                     String name = entry.getKey();
                     FieldDefinition definition = entry.getValue();
                     builder.startObject(name);
-                    if (!name.equals(definition.getStandard())) {
+                    if (definition.getStandard() != null) {
                         builder.field("standard", definition.getStandard());
                     }
-                    if (!name.equals(definition.getPrecise())) {
+                    if (definition.getPrecise() != null) {
                         builder.field("precise", definition.getPrecise());
                     }
-                    if (!name.equals(definition.getReversePrecise())) {
+                    if (definition.getReversePrecise() != null) {
                         builder.field("reverse_precise", definition.getReversePrecise());
+                    }
+                    if (definition.getPrefixPrecise() != null) {
+                        builder.field("prefix_precise", definition.getPrefixPrecise());
                     }
                     builder.endObject();
                 }
@@ -197,6 +209,9 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         }
         if (allowLeadingWildcard != null) {
             builder.field("allow_leading_wildcard", allowLeadingWildcard);
+        }
+        if (allowPrefix != null) {
+            builder.field("allow_prefix", allowPrefix);
         }
         builder.endObject();
     }

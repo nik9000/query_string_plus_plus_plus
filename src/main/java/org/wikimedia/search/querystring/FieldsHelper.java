@@ -46,7 +46,8 @@ public class FieldsHelper {
         definition = new FieldDefinition(
                 firstNonNull(resolver.resolveIndexName(definition.getStandard()), definition.getStandard()),
                 resolver.resolveIndexName(definition.getPrecise()),
-                resolver.resolveIndexName(definition.getReversePrecise()));
+                resolver.resolveIndexName(definition.getReversePrecise()),
+                resolver.resolveIndexName(definition.getPrefixPrecise()));
         fields.put(name, definition);
     }
 
@@ -166,9 +167,14 @@ public class FieldsHelper {
 
     private FieldDefinition definition(String field) {
         FieldDefinition result = fields.get(field);
-        return result == null ? new FieldDefinition(
-                firstNonNull(resolver.resolveIndexName(field), field),
-                resolver.resolveIndexName(field + ".precise"),
-                resolver.resolveIndexName(field + ".reverse_precise")) : result;
+        if (result == null) {
+            // TODO is it worth caching these in the field definitions?
+            return new FieldDefinition(
+                    firstNonNull(resolver.resolveIndexName(field), field),
+                    resolver.resolveIndexName(field + ".precise"),
+                    resolver.resolveIndexName(field + ".reverse_precise"),
+                    resolver.resolveIndexName(field + ".prefix_precise"));
+        }
+        return result;
     }
 }

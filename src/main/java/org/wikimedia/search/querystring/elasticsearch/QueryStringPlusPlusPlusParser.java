@@ -80,6 +80,10 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 case "allowLeadingWildcard":
                     fieldSettings.setAllowLeadingWildcard(parser.booleanValue());
                     break;
+                case "allow_prefix":
+                case "allowPrefix":
+                    fieldSettings.setAllowPrefix(parser.booleanValue());
+                    break;
                 default:
                     throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
                             + "]");
@@ -186,6 +190,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 String standard= null;
                 String precise = null;
                 String reversePrecise = null;
+                String prefixPrecise = null;
                 while ((token = parser.nextToken()) != END_OBJECT) {
                     if (token == FIELD_NAME) {
                         currentFieldName = parser.currentName();
@@ -201,6 +206,10 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                         case "reversePrecise":
                             reversePrecise = parser.text();
                             break;
+                        case "prefix_precise":
+                        case "prefixPrecise":
+                            prefixPrecise = parser.text();
+                            break;
                         default:
                             throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions." + currentFieldName
                                     + "]");
@@ -208,7 +217,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                     }
                 }
                 standard = MoreObjects.firstNonNull(standard, name);
-                fieldsHelper.addField(name, new FieldDefinition(standard, precise, reversePrecise));
+                fieldsHelper.addField(name, new FieldDefinition(standard, precise, reversePrecise, prefixPrecise));
             }
         }
     }

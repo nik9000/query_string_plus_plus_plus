@@ -175,19 +175,23 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     }
 
     @Test
-    public void preciseAndReversePrecise() throws InterruptedException, ExecutionException, IOException {
+    public void rewrites() throws InterruptedException, ExecutionException, IOException {
         buildPreciseAndReverseIndex();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
+        FieldDefinition explicitField = new FieldDefinition("explicit", "explicit.break_auto_precise", "explicit.break_auto_reverse_precise",
+                "explicit.break_auto_prefix_precise");
         QueryStringPlusPlusPlusBuilder builder = builder("explicit", "*oo");
         assertHitCount(search(builder), 0);
-        builder.define("explicit", new FieldDefinition("explicit", "explicit.break_auto_precise", "explicit.break_auto_reverse_precise"));
-        assertHitCount(search(builder), 1);
+        assertHitCount(search(builder.define("explicit", explicitField)), 1);
+        builder = builder("explicit", "fo*").allowPrefix(false);
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.define("explicit", explicitField)), 1);
         /*
          * No need to define the auto field - its subfields follow a pattern the
          * query automatically detects.
          */
-        builder = builder("auto", "*oo");
-        assertHitCount(search(builder), 1);
+        assertHitCount(search(builder("auto", "*oo")), 1);
+        assertHitCount(search(builder("auto", "fo*").allowPrefix(false)), 1);
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
@@ -215,16 +219,36 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         mapping.endObject().endObject().endObject();
 
         XContentBuilder settings = jsonBuilder().startObject().startObject("index");
-        settings.startObject("analysis").startObject("analyzer");
+        settings.startObject("analysis");
         {
-            settings.startObject("reverse_standard");
+            settings.startObject("analyzer");
             {
-                settings.field("tokenizer", "standard");
-                settings.field("filter", "standard", "lowercase", "reverse");
+                settings.startObject("reverse_standard");
+                {
+                    settings.field("tokenizer", "standard");
+                    settings.field("filter", "standard", "lowercase", "reverse");
+                }
+                settings.endObject();
+                settings.startObject("prefix_standard");
+                {
+                    settings.field("tokenizer", "standard");
+                    settings.field("filter", "standard", "lowercase", "prefix");
+                }
+                settings.endObject();
+            }
+            settings.endObject();
+            settings.startObject("filter");
+            {
+                settings.startObject("prefix");
+                {
+                    settings.field("type", "edgeNGram");
+                    settings.field("max_grap", 255);
+                }
+                settings.endObject();
             }
             settings.endObject();
         }
-        settings.endObject().endObject();
+        settings.endObject();
         assertAcked(prepareCreate("test").setSettings(settings).addMapping("test", mapping));
         ensureYellow();
     }
@@ -238,6 +262,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
             String namePrefix = breakAutoDetection ? "break_auto_" : "";
             field(mapping, namePrefix + "precise", "standard");
             field(mapping, namePrefix + "reverse_precise", "reverse_standard");
+            field(mapping, namePrefix + "prefix_precise", "prefix_standard");
             mapping.endObject();
         }
         mapping.endObject();

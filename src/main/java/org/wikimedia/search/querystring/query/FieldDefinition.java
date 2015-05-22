@@ -9,19 +9,21 @@ public class FieldDefinition {
     private final String standard;
     private final String precise;
     private final String reversePrecise;
+    private final String prefixPrecise;
 
-    public FieldDefinition(String standard, @Nullable String precise, @Nullable String reversePrecise) {
+    public FieldDefinition(String standard, @Nullable String precise, @Nullable String reversePrecise, @Nullable String prefixPrecise) {
         this.standard = standard;
         this.precise = precise;
         this.reversePrecise = reversePrecise;
+        this.prefixPrecise = prefixPrecise;
     }
 
     public FieldDefinition(String standard, @Nullable String precise) {
-        this(standard, precise, null);
+        this(standard, precise, null, null);
     }
 
     public FieldDefinition(String standard) {
-        this(standard, null, null);
+        this(standard, null);
     }
 
     /**
@@ -42,11 +44,19 @@ public class FieldDefinition {
     }
 
     /**
-     * The field to be searched for wildcard terms that contain leading
+     * The field to be searched for wildcard queries that contain leading
      * wildcards or null if there is no such field.
      */
     public String getReversePrecise() {
         return reversePrecise;
+    }
+
+    /**
+     * The field to be searched for prefix queries or null if there is no such
+     * field.
+     */
+    public String getPrefixPrecise() {
+        return prefixPrecise;
     }
 
     @Override
@@ -58,7 +68,10 @@ public class FieldDefinition {
         b.append(standard);
         b.append('(').append(precise);
         if (reversePrecise != null) {
-            b.append('~').append(reversePrecise);
+            b.append('?').append(reversePrecise);
+        }
+        if (prefixPrecise != null) {
+            b.append('*').append(prefixPrecise);
         }
         b.append(')');
         return b.toString();

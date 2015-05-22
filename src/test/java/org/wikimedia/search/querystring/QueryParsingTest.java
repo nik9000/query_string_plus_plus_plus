@@ -143,6 +143,7 @@ public class QueryParsingTest {
                 { new WildcardQuery(new Term("field_reverse", "oo*")), "*oo", "reverseFields=field->field_reverse" }, //
                 { new TermQuery(new Term("field", "?o?")), "?o?", "reverseFields=field->field_reverse" }, //
                 { new TermQuery(new Term("field", "*o*")), "*o*", "reverseFields=field->field_reverse" }, //
+                { query("field_prefix:oo"), "oo*", "prefixFields=field->field_prefix" }, //
                 { query("p?l"), "p?l" }, //
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
@@ -204,6 +205,7 @@ public class QueryParsingTest {
             blacklist.add("blacklisted");
             boolean allowLeadingWildcard = false;
             Map<String, String> reverseFields = new HashMap<>();
+            Map<String, String> prefixFields = new HashMap<>();
             String label;
             switch (param.length) {
             case 2:
@@ -255,10 +257,8 @@ public class QueryParsingTest {
                 if (newAllowLeadingWildcard != null) {
                     allowLeadingWildcard = Boolean.parseBoolean(newAllowLeadingWildcard);
                 }
-                String extraReverseFields = settings.remove("reverseFields");
-                if (extraReverseFields != null) {
-                    reverseFields.putAll(Splitter.on('|').withKeyValueSeparator("->").split(extraReverseFields));
-                }
+                parseToMap(reverseFields, settings, "reverseFields");
+                parseToMap(prefixFields, settings, "prefixFields");
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -267,9 +267,17 @@ public class QueryParsingTest {
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
             params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist,
-                    allowLeadingWildcard, reverseFields });
+                    allowLeadingWildcard, reverseFields, prefixFields });
         }
         return params;
+    }
+
+    private static void parseToMap(Map<String, String> target, Map<String, String> settings, String name) {
+        String value = settings.remove(name);
+        if (value == null) {
+            return;
+        }
+        target.putAll(Splitter.on('|').withKeyValueSeparator("->").split(value));
     }
 
     private static final Pattern FIELD_PATTERN = Pattern.compile("([^:]+):(.+)");
@@ -297,6 +305,8 @@ public class QueryParsingTest {
     public boolean allowLeadingWildcard;
     @Parameter(10)
     public Map<String, String> reverseFields;
+    @Parameter(11)
+    public Map<String, String> prefixFields;
 
     @Test
     public void parse() {
@@ -327,7 +337,7 @@ public class QueryParsingTest {
         for (String field : fields) {
             FieldReference reference = fieldReference(field);
             FieldDefinition definition = new FieldDefinition(reference.getName(), "precise_" + reference.getName(),
-                    reverseFields.get(reference.getName()));
+                    reverseFields.get(reference.getName()), prefixFields.get(reference.getName()));
             usages.add(new FieldUsage(definition, reference.getBoost()));
         }
         FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();

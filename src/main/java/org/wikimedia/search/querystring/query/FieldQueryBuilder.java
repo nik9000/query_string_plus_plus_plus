@@ -29,6 +29,7 @@ public interface FieldQueryBuilder {
         private RewriteMethod rewriteMethod;
         private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
         private boolean allowLeadingWildcard;
+        private boolean allowPrefix = true;
 
         public int getMaxPhraseSlop() {
             return maxPhraseSlop;
@@ -77,6 +78,14 @@ public interface FieldQueryBuilder {
          */
         public void setAllowLeadingWildcard(boolean allowLeadingWildcard) {
             this.allowLeadingWildcard = allowLeadingWildcard;
+        }
+
+        public boolean getAllowPrefix() {
+            return allowPrefix;
+        }
+
+        public void setAllowPrefix(boolean allowPrefix) {
+            this.allowPrefix = allowPrefix;
         }
     }
 }
