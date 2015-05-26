@@ -188,8 +188,8 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     public void rewrites() throws InterruptedException, ExecutionException, IOException {
         buildPreciseAndReverseIndex();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
-        FieldDefinition explicitField = new FieldDefinition("explicit", "explicit.break_auto_precise", "explicit.break_auto_reverse_precise",
-                "explicit.break_auto_prefix_precise");
+        FieldDefinition explicitField = new FieldDefinition("explicit", "explicit.break_auto_precise",
+                "explicit.break_auto_reverse_precise", "explicit.break_auto_prefix_precise");
         QueryStringPlusPlusPlusBuilder builder = builder("explicit", "*oo");
         assertHitCount(search(builder), 0);
         assertHitCount(search(builder.define("explicit", explicitField)), 1);
@@ -202,6 +202,24 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
          */
         assertHitCount(search(builder("auto", "*oo")), 1);
         assertHitCount(search(builder("auto", "fo*").allowPrefix(false)), 1);
+    }
+
+    /**
+     * This tests using Elasticsearch's _field_name optimization for field
+     * exists.
+     */
+    @Test
+    public void exists() throws InterruptedException, ExecutionException, IOException {
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("a", "foo"), //
+                client().prepareIndex("test", "test", "2").setSource("b", "foo"), //
+                client().prepareIndex("test", "test", "3").setSource("a", "foo", "b", "foo"));
+        assertHitCount(search(builder("a", "*")), 2);
+        assertHitCount(search(builder("b", "*")), 2);
+        assertHitCount(search(builder("does_not_exist", "*")), 0);
+        assertHitCount(search(builder("a,b", "a:* OR b:*")), 3);
+        assertHitCount(search(builder("a,b", "a:* AND b:*")), 1);
+        assertHitCount(search(builder("a,b", "(a:* OR b:*) AND NOT (a:* AND b:*)")), 2);
+        assertSearchHits(search(builder("a,b", "a:* NOT b:*")), "1");
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {

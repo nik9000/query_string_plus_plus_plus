@@ -86,6 +86,11 @@ public class DefaultingQueryBuilder implements QueryBuilder {
     }
 
     @Override
+    public Query fieldExists() {
+        return delegate.fieldExists();
+    }
+
+    @Override
     public Query matchNone() {
         return delegate.matchNone();
     }

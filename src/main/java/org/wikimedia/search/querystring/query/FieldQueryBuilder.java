@@ -20,6 +20,8 @@ public interface FieldQueryBuilder {
 
     Query wildcardQuery(String term);
 
+    Query fieldExists();
+
     /**
      * Settings used by FieldQueryBuilders.
      */
@@ -31,6 +33,7 @@ public interface FieldQueryBuilder {
         private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
         private boolean allowLeadingWildcard;
         private boolean allowPrefix = true;
+        private boolean shouldUseFieldNamesFieldForExists = false;
 
         public int getMaxPhraseSlop() {
             return maxPhraseSlop;
@@ -99,6 +102,14 @@ public interface FieldQueryBuilder {
 
         public void setAllowPrefix(boolean allowPrefix) {
             this.allowPrefix = allowPrefix;
+        }
+
+        public boolean getShouldUseFieldNamesFieldForExists() {
+            return shouldUseFieldNamesFieldForExists;
+        }
+
+        public void setShouldUseFieldNamesFieldForExists(boolean shouldUseFieldNamesFieldForExists) {
+            this.shouldUseFieldNamesFieldForExists = shouldUseFieldNamesFieldForExists;
         }
     }
 }

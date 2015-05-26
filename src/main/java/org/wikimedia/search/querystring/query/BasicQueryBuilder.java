@@ -67,6 +67,11 @@ public class BasicQueryBuilder implements QueryBuilder {
     }
 
     @Override
+    public Query fieldExists() {
+        return fieldQueryBuilder.fieldExists();
+    }
+
+    @Override
     public String toString() {
         return fieldQueryBuilder.toString();
     }

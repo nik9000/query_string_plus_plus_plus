@@ -16,6 +16,7 @@ import org.elasticsearch.common.base.MoreObjects;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
+import org.elasticsearch.index.mapper.internal.FieldNamesFieldMapper;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.query.QueryParser;
 import org.elasticsearch.index.query.QueryParsingException;
@@ -168,6 +169,11 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
         if (fields == null) {
             throw new QueryParsingException(parseContext.index(),
                     "qsppp must be provided with a [fields] or a [field] or a [fields.default]");
+        }
+        FieldNamesFieldMapper fieldNamesMapper = (FieldNamesFieldMapper) parseContext.mapperService().fullName(FieldNamesFieldMapper.NAME)
+                .mapper();
+        if (fieldNamesMapper != null && fieldNamesMapper.enabled()) {
+            fieldSettings.setShouldUseFieldNamesFieldForExists(true);
         }
 
         List<FieldUsage> defaultFields = fieldsHelper.resolve(parseFields(fields), defaultFieldUnauthorizedAction);

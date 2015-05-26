@@ -13,4 +13,6 @@ public interface QueryBuilder extends FieldQueryBuilder {
     Query matchNone();
 
     Query matchAll();
+
+    Query fieldExists();
 }

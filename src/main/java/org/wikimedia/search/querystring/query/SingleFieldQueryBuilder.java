@@ -21,6 +21,7 @@ import org.apache.lucene.search.WildcardQuery;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
+import org.elasticsearch.index.mapper.internal.FieldNamesFieldMapper;
 import org.elasticsearch.index.query.support.QueryParsers;
 
 public class SingleFieldQueryBuilder implements FieldQueryBuilder {
@@ -113,6 +114,14 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         WildcardQuery query = new WildcardQuery(preciseTerm(term));
         QueryParsers.setRewriteMethod(query, settings.getRewriteMethod());
         return query;
+    }
+
+    @Override
+    public Query fieldExists() {
+        if (settings.getShouldUseFieldNamesFieldForExists()) {
+            return new TermQuery(new Term(FieldNamesFieldMapper.NAME, field.getStandard()));
+        }
+        return prefixQuery("");
     }
 
     public Term preciseTerm(String term) {

@@ -210,7 +210,6 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitPhrase(PhraseContext ctx) {
-            // TODO this isn't quite right for non-english I think.
             List<TerminalNode> terms = ctx.QUOTED_TERM();
             List<String> text = new ArrayList<>(terms.size());
             for (TerminalNode term : terms) {
@@ -251,8 +250,7 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitFieldExists(FieldExistsContext ctx) {
-            // TODO dip into elasticsearch to build these properly
-            return wrap(builder.prefixQuery(""));
+            return wrap(builder.fieldExists());
         }
 
         @Override

@@ -62,6 +62,15 @@ public class MultiFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     @Override
+    public Query fieldExists() {
+        BooleanQuery bq = or();
+        for (FieldQueryBuilder fieldDelegate : fieldDelegates) {
+            bq.add(fieldDelegate.fieldExists(), Occur.SHOULD);
+        }
+        return bq;
+    }
+
+    @Override
     public String toString() {
         return fieldDelegates.toString();
     }

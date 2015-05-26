@@ -41,6 +41,11 @@ public class BoostingFieldQueryBuilder implements FieldQueryBuilder {
         return boost(delegate.wildcardQuery(term));
     }
 
+    @Override
+    public Query fieldExists() {
+        return boost(delegate.fieldExists());
+    }
+
     private Query boost(Query q) {
         q.setBoost(boost);
         return q;
