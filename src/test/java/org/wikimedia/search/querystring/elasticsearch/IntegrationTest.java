@@ -70,6 +70,16 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     }
 
     @Test
+    public void detectedFieldsArentWhitelisted() throws InterruptedException, ExecutionException, IOException {
+        buildPreciseAndReverseIndex();
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("auto", "stemming"));
+        assertHitCount(search(builder("auto", "stem")), 1);
+        assertHitCount(search(builder("auto", "auto.precise:stemming")), 0);
+        assertHitCount(search(builder("auto", "auto.precise:stemming").whitelist("auto.precise")), 1);
+        assertHitCount(search(builder("auto", "auto.precise:stem").whitelist("auto.precise")), 0);
+    }
+
+    @Test
     public void whitelistAll() throws InterruptedException, ExecutionException {
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "bar", "other", "bar"));
         QueryStringPlusPlusPlusBuilder builder = builder("foo", "other:bar");

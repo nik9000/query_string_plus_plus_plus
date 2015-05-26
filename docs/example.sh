@@ -62,7 +62,10 @@ curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
     "query": {
         "qsppp": {
             "query": "foo.precise:stemming",
-            "fields": "foo"
+            "fields": {
+                "default": "foo",
+                "whitelist": ["foo.precise"]
+            }
         }
     }
 }' | grep '"_id" : "1"'
@@ -71,7 +74,12 @@ curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
     "query": {
         "qsppp": {
             "query": "foo.precise:stem",
-            "fields": "foo"
+            "fields": {
+                "default": "foo",
+                "whitelist": ["foo.precise"]
+            }
         }
     }
 }' | grep '"total" : 0'
+
+echo Victory!
