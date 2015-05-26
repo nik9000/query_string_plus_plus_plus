@@ -148,7 +148,7 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                         }
                         return null;
                     }
-                    ts = analyzer.tokenStream(null, term.next());
+                    ts = analyzer.tokenStream(field, term.next());
                     termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
                     analyzedTerm = termAtt.getBytesRef();
                     ts.reset();

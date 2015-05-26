@@ -13,6 +13,8 @@ import java.util.Locale;
 
 import org.apache.lucene.search.Query;
 import org.elasticsearch.common.base.MoreObjects;
+import org.elasticsearch.common.logging.ESLogger;
+import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.QueryParseContext;
 import org.elasticsearch.index.query.QueryParser;
@@ -32,6 +34,7 @@ import org.wikimedia.search.querystring.query.FieldUsage;
  */
 public class QueryStringPlusPlusPlusParser implements QueryParser {
     public static final String[] NAMES = new String[] { "qsppp", "query_string_plus_plus_plus", "queryStringPlusPlusPlus" };
+    private static final ESLogger log = ESLoggerFactory.getLogger(QueryStringPlusPlusPlusParser.class.getPackage().getName());
 
     @Override
     public String[] names() {
@@ -85,8 +88,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                     fieldSettings.setAllowPrefix(parser.booleanValue());
                     break;
                 default:
-                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
-                            + "]");
+                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName + "]");
                 }
             } else if (token == START_OBJECT) {
                 switch (currentFieldName) {
@@ -155,8 +157,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                     }
                     break;
                 default:
-                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName
-                            + "]");
+                    throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName + "]");
                 }
             }
         }
@@ -172,11 +173,20 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
         List<FieldUsage> defaultFields = fieldsHelper.resolve(parseFields(fields), defaultFieldUnauthorizedAction);
         BasicQueryBuilder basicQueryBuilder = new BasicQueryBuilder(fieldSettings, defaultFields);
         DefaultingQueryBuilder queryBuilder = new DefaultingQueryBuilder(defaultSettings, basicQueryBuilder);
-        Query parsed = new QueryParserHelper(fieldsHelper, queryBuilder, defaultIsAnd, emptyIsMatchAll).parse(query);
-        if (boost != null) {
-            parsed.setBoost(boost);
+        try {
+            Query parsed = new QueryParserHelper(fieldsHelper, queryBuilder, defaultIsAnd, emptyIsMatchAll).parse(query);
+            if (boost != null) {
+                parsed.setBoost(boost);
+            }
+            return parsed;
+        } catch (Exception e) {
+            /*
+             * Elasticsearch doesn't log the stack trace for these errors so we
+             * log them ourselves.
+             */
+            log.warn("Error parsing query", e);
+            throw e;
         }
-        return parsed;
     }
 
     private void parseDefinitions(QueryParseContext parseContext, XContentParser parser, FieldsHelper fieldsHelper) throws IOException {
@@ -187,7 +197,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 name = parser.currentName();
             } else if (token == START_OBJECT) {
                 String currentFieldName = null;
-                String standard= null;
+                String standard = null;
                 String precise = null;
                 String reversePrecise = null;
                 String prefixPrecise = null;
@@ -211,8 +221,8 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                             prefixPrecise = parser.text();
                             break;
                         default:
-                            throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions." + currentFieldName
-                                    + "]");
+                            throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions."
+                                    + currentFieldName + "]");
                         }
                     }
                 }
