@@ -37,6 +37,7 @@ import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
 import org.elasticsearch.common.base.Splitter;
 import org.elasticsearch.common.collect.ArrayListMultimap;
+import org.elasticsearch.common.collect.Iterables;
 import org.elasticsearch.common.collect.ListMultimap;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
@@ -49,8 +50,6 @@ import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
-
-import com.carrotsearch.ant.tasks.junit4.dependencies.com.google.common.collect.Iterables;
 
 /**
  * Tests that the parser builds the right queries.
