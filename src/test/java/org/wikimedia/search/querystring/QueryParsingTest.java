@@ -1,6 +1,8 @@
 package org.wikimedia.search.querystring;
 
 import static org.elasticsearch.common.collect.Maps.newHashMap;
+import static org.elasticsearch.common.lucene.search.Queries.newMatchAllQuery;
+import static org.elasticsearch.common.lucene.search.Queries.newMatchNoDocsQuery;
 import static org.junit.Assert.assertEquals;
 import static org.wikimedia.search.querystring.FieldsParsingTest.BOOST_PATTERN;
 import static org.wikimedia.search.querystring.FieldsParsingTest.fieldReference;
@@ -18,6 +20,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.core.KeywordAnalyzer;
+import org.apache.lucene.analysis.en.EnglishAnalyzer;
+import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -31,7 +38,6 @@ import org.apache.lucene.search.WildcardQuery;
 import org.elasticsearch.common.base.Splitter;
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.ListMultimap;
-import org.elasticsearch.common.lucene.search.Queries;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -40,7 +46,6 @@ import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
-import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
@@ -58,30 +63,45 @@ public class QueryParsingTest {
         for (Object[] param : new Object[][] {
                 { query("foo"), "foo" }, //
                 { query("foo"), "foo   " }, //
-                { Queries.newMatchAllQuery(), "" }, //
-                { Queries.newMatchAllQuery(), "   " }, //
-                { Queries.newMatchNoDocsQuery(), "", "empty=matchNone" }, //
-                { Queries.newMatchNoDocsQuery(), "   ", "empty=matchNone" }, //
-                { query("AND"), "AND" }, //
-                { query("||"), "||" }, //
-                { query(","), "," }, //
-                { query("a,"), "a," }, //
-                { query("~"), "~" }, //
-                { query("+"), "+" }, //
-                { query("-"), "-" }, //
+                { newMatchAllQuery(), "" }, //
+                { newMatchAllQuery(), "   " }, //
+                { newMatchNoDocsQuery(), "", "empty=matchNone" }, //
+                { newMatchNoDocsQuery(), "   ", "empty=matchNone" }, //
+                { query("and"), "AND", "standardAnalyzer=standard" }, //
+                { query("or"), "OR", "standardAnalyzer=standard" }, //
+                { query("a"), "a,", "standardAnalyzer=standard" }, //
+                { query("AND"), "AND", "standardAnalyzer=keyword" }, //
+                { query("OR"), "OR", "standardAnalyzer=keyword" }, //
+                { query("||"), "||", "standardAnalyzer=keyword" }, //
+                { query(","), ",", "standardAnalyzer=keyword" }, //
+                { query("a,"), "a,", "standardAnalyzer=keyword" }, //
+                { query("~"), "~", "standardAnalyzer=keyword" }, //
+                { query("+"), "+", "standardAnalyzer=keyword" }, //
+                { query("-"), "-", "standardAnalyzer=keyword" }, //
+                { newMatchAllQuery(), "AND" }, //
+                { newMatchAllQuery(), "OR" }, //
+                { newMatchAllQuery(), "a," }, //
+                { newMatchAllQuery(), "||" }, //
+                { newMatchAllQuery(), "," }, //
+                { newMatchAllQuery(), "a," }, //
+                { newMatchAllQuery(), "~" }, //
+                { newMatchAllQuery(), "+" }, //
+                { newMatchAllQuery(), "-" }, //
                 { and("foo", "bar", "baz"), "foo bar baz" }, //
                 { or("foo", "bar"), "foo OR bar" }, //
-                { and("foo", "or", "bar"), "foo or bar" }, //
+                { and("foo", "or", "bar"), "foo or bar", "standardAnalyzer=keyword" }, //
+                /* The operator is thrown out because its an English stopword. */
+                { and("foo", "bar"), "foo or bar" }, //
                 { and("foo", "bar"), "foo AND bar" }, //
-                { and("foo", "and", "bar"), "foo and bar" }, //
+                { and("foo", "bar"), "foo and bar" }, //
                 { or("foo", "bar"), "foo || bar" }, //
                 { or("foo", "bar"), "foo||bar" }, //
                 { and("foo", "bar"), "foo && bar" }, //
                 { and("foo", "bar"), "foo&&bar" }, //
                 { and("foo", "bar"), "foo bar" }, //
-                { and("foo", "OR"), "foo OR" }, //
-                { and("foo", "AND"), "foo AND" }, //
-                { and("foo", "&&"), "foo &&" }, //
+                { and("foo", "OR"), "foo OR", "standardAnalyzer=keyword" }, //
+                { and("foo", "AND"), "foo AND", "standardAnalyzer=keyword" }, //
+                { and("foo", "&&"), "foo &&", "standardAnalyzer=keyword" }, //
                 { and("foo", "bar", "baz"), "foo AND bar AND baz" }, //
                 { or(and("foo", "bar"), "baz"), "foo AND bar OR baz" }, //
                 { and("foo", or("bar", "baz")), "foo bar OR baz" }, //
@@ -101,8 +121,10 @@ public class QueryParsingTest {
                 { or("foo", "bar", clause(and("baz", "bort"), Occur.MUST)), "foo bar +(baz AND bort)", "default=or" }, //
                 { or("foo", "bar", and("baz", "bort")), "foo bar (baz AND bort)", "default=or" }, //
                 { phrase("foo", "bar"), "\"foo bar\"" }, //
-                { phrase("foo", "\"bar"), "\"foo \\\"bar\"" }, //
-                { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"" }, //
+                { phrase("foo", "\"bar"), "\"foo \\\"bar\"", "preciseAnalyzer=keyword" }, //
+                { phrase("foo", "bar"), "\"foo \\\"bar\"" }, //
+                { phrase("foo", "\"", "bar"), "\"foo \\\" bar\"", "preciseAnalyzer=keyword" }, //
+                { phrase("foo", "bar"), "\"foo \\\" bar\"" }, //
                 { phrase("foo", "bar"), "\"foo bar" }, //
                 { boost(phrase("foo", "bar"), 2), "\"foo bar\"^2" }, //
                 { and(phrase("foo", "bar"), "precise_field:baz"), "\"foo bar\" \"baz\"" }, //
@@ -135,14 +157,14 @@ public class QueryParsingTest {
                 { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
-                { new TermQuery(new Term("field", "???")), "???" }, //
-                { new TermQuery(new Term("field", "*oo")), "*oo" }, //
+                { new TermQuery(new Term("field", "???")), "???", "standardAnalyzer=keyword" }, //
+                { new TermQuery(new Term("field", "*oo")), "*oo", "standardAnalyzer=keyword" }, //
                 { query("???"), "???", "allowLeadingWildcard=true" }, //
                 { query("*oo"), "*oo", "allowLeadingWildcard=true" }, //
                 { query("field_reverse:oo?"), "?oo", "reverseFields=field->field_reverse" }, //
                 { new WildcardQuery(new Term("field_reverse", "oo*")), "*oo", "reverseFields=field->field_reverse" }, //
-                { new TermQuery(new Term("field", "?o?")), "?o?", "reverseFields=field->field_reverse" }, //
-                { new TermQuery(new Term("field", "*o*")), "*o*", "reverseFields=field->field_reverse" }, //
+                { new TermQuery(new Term("field", "?o?")), "?o?", "reverseFields=field->field_reverse,standardAnalyzer=keyword" }, //
+                { new TermQuery(new Term("field", "*o*")), "*o*", "reverseFields=field->field_reverse,standardAnalyzer=keyword" }, //
                 { query("field_prefix:oo"), "oo*", "prefixFields=field->field_prefix" }, //
                 { query("p?l"), "p?l" }, //
                 { query("pi*kl?"), "pi*kl?" }, //
@@ -150,12 +172,13 @@ public class QueryParsingTest {
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
                 // This next one is slightly different than Cirrus
                 { query("precise_field:10.7227"), "\"10.7227\"yay\"" }, //
-                { query("precise_field:10.1093/acprof:oso/9780195314250.003.0001"), "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
-                { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                { phrase("precise_field:10.1093", "precise_field:acprof:oso", "precise_field:9780195314250.003.0001"),
+                        "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
+                { and(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" pickles \"ffnonesenseword catapult" }, //
-                { and(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                { and(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" AND pickles AND \"ffnonesenseword catapult\"" }, //
-                { or(phrase("two", "words"), "pickles", phrase("ffnonesenseword", "catapult")),
+                { or(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" OR pickles OR \"ffnonesenseword catapult\"" }, //
                 // The next two are also different than Cirrus
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~garbage" }, //
@@ -167,7 +190,8 @@ public class QueryParsingTest {
                 { or("a:foo", "b:foo^5"), "foo", "fields=a|b^5" }, //
                 { and("foo^5", "bar"), "foo^5 bar" }, //
                 { and("foo^5.1", "bar"), "foo^5.1 bar" }, //
-                { and("foo^cat", "bar"), "foo^cat bar" }, //
+                { and("foo^cat", "bar"), "foo^cat bar", "standardAnalyzer=keyword" }, //
+                { and(phrase("field:foo", "field:cat"), "bar"), "foo^cat bar" }, //
                 { and("another_field:foo", "bar"), "another_field:foo bar" }, //
                 { and("another.field:foo", "bar"), "another.field:foo bar" }, //
                 { and("another:foo^2", "bar"), "another^2:foo bar" }, //
@@ -184,6 +208,21 @@ public class QueryParsingTest {
                         "aliases=tc->title^2;category, whitelist=title|category" }, //
                 { or(boost(phrase("title:foo", "title:bar"), 4), boost(phrase("category:foo", "category:bar"), 2)), "tc^2:\"foo bar\"",
                         "aliases=tc->title^2;category, whitelist=title|category" }, //
+                // Terms are analyzed
+                { query("cat"), "cats" }, //
+                /*
+                 * Stopwords are excluded _but_ we're not that careful with the
+                 * wrapping query.
+                 */
+                { and(query("cat")), "and cats" }, //
+                /*
+                 * Terms are analyzed and when they are multiple tokens they are
+                 * phrase queries.
+                 */
+                { phrase("field:日", "field:本", "field:語"), "日本語" }, //
+                { phrase("日", "本", "語"), "\"日本語\"" }, //
+                { and(phrase("field:日", "field:本", "field:語"), "more", "word", phrase("field:共", "field:通", "field:語")),
+                        "日本語 more words 共通語" }, //
         // TODO fields can't be integer or contain them!
         }) {
             Query expected = (Query) param[0];
@@ -206,6 +245,8 @@ public class QueryParsingTest {
             boolean allowLeadingWildcard = false;
             Map<String, String> reverseFields = new HashMap<>();
             Map<String, String> prefixFields = new HashMap<>();
+            Analyzer standardAnalyzer = parseAnalyzer("english");
+            Analyzer preciseAnalyzer = parseAnalyzer("standard");
             String label;
             switch (param.length) {
             case 2:
@@ -259,6 +300,14 @@ public class QueryParsingTest {
                 }
                 parseToMap(reverseFields, settings, "reverseFields");
                 parseToMap(prefixFields, settings, "prefixFields");
+                String newStandardAnalyzer = settings.remove("standardAnalyzer");
+                if (newStandardAnalyzer != null) {
+                    standardAnalyzer = parseAnalyzer(newStandardAnalyzer);
+                }
+                String newPreciseAnalyzer = settings.remove("preciseAnalyzer");
+                if (newPreciseAnalyzer != null) {
+                    preciseAnalyzer = parseAnalyzer(newPreciseAnalyzer);
+                }
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -267,7 +316,7 @@ public class QueryParsingTest {
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
             params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist,
-                    allowLeadingWildcard, reverseFields, prefixFields });
+                    allowLeadingWildcard, reverseFields, prefixFields, standardAnalyzer, preciseAnalyzer });
         }
         return params;
     }
@@ -307,6 +356,10 @@ public class QueryParsingTest {
     public Map<String, String> reverseFields;
     @Parameter(11)
     public Map<String, String> prefixFields;
+    @Parameter(12)
+    public Analyzer standardAnalyzer;
+    @Parameter(13)
+    public Analyzer preciseAnalyzer;
 
     @Test
     public void parse() {
@@ -315,7 +368,7 @@ public class QueryParsingTest {
     }
 
     private FieldsHelper fieldsHelper() {
-        FieldsHelper fieldsHelper = new FieldsHelper(new FieldDetector.Noop());
+        FieldsHelper fieldsHelper = new FieldsHelper(new FieldResolver.NeverFinds(standardAnalyzer, preciseAnalyzer));
         for (Map.Entry<String, String> alias : aliases.entries()) {
             fieldsHelper.addAlias(alias.getKey(), fieldReference(alias.getValue()));
         }
@@ -333,12 +386,15 @@ public class QueryParsingTest {
     }
 
     private DefaultingQueryBuilder builder() {
+        Analyzer reversePreciseAnalyzer = preciseAnalyzer;
+        Analyzer prefixPreciseAnalyzer = preciseAnalyzer;
         List<FieldUsage> usages = new ArrayList<>();
         for (String field : fields) {
             FieldReference reference = fieldReference(field);
-            FieldDefinition definition = new FieldDefinition(reference.getName(), "precise_" + reference.getName(),
-                    reverseFields.get(reference.getName()), prefixFields.get(reference.getName()));
-            usages.add(new FieldUsage(definition, reference.getBoost()));
+            FieldUsage usage = new FieldUsage(reference.getName(), standardAnalyzer, "precise_" + reference.getName(), preciseAnalyzer,
+                    reverseFields.get(reference.getName()), reversePreciseAnalyzer, prefixFields.get(reference.getName()),
+                    prefixPreciseAnalyzer, reference.getBoost());
+            usages.add(usage);
         }
         FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
         settings.setAllowLeadingWildcard(allowLeadingWildcard);
@@ -421,6 +477,7 @@ public class QueryParsingTest {
         }
         m = Pattern.compile("(.+)~(\\d+)").matcher(s);
         if (m.matches()) {
+            field = !specifiedField ? "precise_" + field : field;
             s = m.group(1);
             int edits = Integer.parseInt(m.group(2), 10);
             FuzzyQuery fq = new FuzzyQuery(new Term(field, s), edits, UNCHANGED_SETTINGS.getFuzzyPrefixLength(),
@@ -446,5 +503,18 @@ public class QueryParsingTest {
     private static Query boost(Query query, float boost) {
         query.setBoost(boost);
         return query;
+    }
+
+    private static Analyzer parseAnalyzer(String name) {
+        switch (name) {
+        case "english":
+            return new EnglishAnalyzer();
+        case "standard":
+            return new StandardAnalyzer(CharArraySet.EMPTY_SET);
+        case "keyword":
+            return new KeywordAnalyzer();
+        default:
+            throw new RuntimeException("Unexpected analyzer:  " + name);
+        }
     }
 }

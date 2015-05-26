@@ -54,7 +54,7 @@ public class QueryParserHelper {
 
     public Query parse(String str) {
         BooleanClause c = new Visitor().visit(buildParser(str).query());
-        if (c == null) {
+        if (c == null || c.getQuery() == null) {
             // We've just parsed an empty query
             return emptyIsMatchAll ? rootBuilder.matchAll() : rootBuilder.matchNone();
         }
@@ -261,6 +261,9 @@ public class QueryParserHelper {
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {
+            if (clause.getQuery() == null) {
+                return;
+            }
             if (clause.getOccur() == null) {
                 bq.add(clause.getQuery(), defaultOccur);
             } else {

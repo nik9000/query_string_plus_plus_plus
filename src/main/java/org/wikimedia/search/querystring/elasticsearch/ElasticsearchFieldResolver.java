@@ -1,18 +1,20 @@
 package org.wikimedia.search.querystring.elasticsearch;
 
+import org.apache.lucene.analysis.Analyzer;
+import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.query.QueryParseContext;
-import org.wikimedia.search.querystring.FieldDetector;
+import org.wikimedia.search.querystring.FieldResolver;
 
-public class ElasticsearchFieldDetector implements FieldDetector {
+public class ElasticsearchFieldResolver implements FieldResolver {
     private final QueryParseContext context;
 
-    public ElasticsearchFieldDetector(QueryParseContext context) {
+    public ElasticsearchFieldResolver(QueryParseContext context) {
         this.context = context;
     }
 
     @Override
-    public String resolveIndexName(String field) {
+    public Tuple<String, Analyzer> resolve(String field) {
         if (field == null) {
             return null;
         }
@@ -24,8 +26,19 @@ public class ElasticsearchFieldDetector implements FieldDetector {
          */
         if (smart != null && smart.hasMapper()) {
             // TODO when is this different from field?
-            return smart.mapper().names().indexName();
+            String name = smart.mapper().names().indexName();
+            return new Tuple<>(name, smart.searchAnalyzer());
         }
         return null;
+    }
+
+    @Override
+    public Analyzer defaultStandardSearchAnalyzer() {
+        return context.mapperService().searchAnalyzer();
+    }
+
+    @Override
+    public Analyzer defaultPreciseSearchAnalyzer() {
+        return context.mapperService().searchQuoteAnalyzer();
     }
 }

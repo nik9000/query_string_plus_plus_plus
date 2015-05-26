@@ -1,7 +1,5 @@
 package org.wikimedia.search.querystring;
 
-import static org.elasticsearch.common.base.MoreObjects.firstNonNull;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -11,8 +9,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.lucene.analysis.Analyzer;
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.ListMultimap;
+import org.elasticsearch.common.collect.Tuple;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
@@ -29,13 +29,20 @@ public class FieldsHelper {
         KEEP, REMOVE, WHITELIST;
     }
 
+    /**
+     * Registered fields.
+     */
     private final Map<String, FieldDefinition> fields = new HashMap<>();
+    /**
+     * Fields with their analyzers resolved.
+     */
+    private final Map<String, FieldUsage> resolvedFields = new HashMap<>();
     private final ListMultimap<String, FieldReference> aliases = ArrayListMultimap.create();
     private final Set<String> blacklist = new HashSet<>();
-    private final FieldDetector resolver;
+    private final FieldResolver resolver;
     private Set<String> whitelist = new HashSet<>();
 
-    public FieldsHelper(FieldDetector resolver) {
+    public FieldsHelper(FieldResolver resolver) {
         this.resolver = resolver;
     }
 
@@ -43,11 +50,6 @@ public class FieldsHelper {
      * Defines a field for later use.
      */
     public void addField(String name, FieldDefinition definition) {
-        definition = new FieldDefinition(
-                firstNonNull(resolver.resolveIndexName(definition.getStandard()), definition.getStandard()),
-                resolver.resolveIndexName(definition.getPrecise()),
-                resolver.resolveIndexName(definition.getReversePrecise()),
-                resolver.resolveIndexName(definition.getPrefixPrecise()));
         fields.put(name, definition);
     }
 
@@ -158,23 +160,77 @@ public class FieldsHelper {
     }
 
     private FieldUsage buildNoAliasResult(FieldReference reference) {
-        return new FieldUsage(definition(reference.getName()), reference.getBoost());
+        return lookupOrBuild(reference.getName(), reference.getBoost());
     }
 
     private FieldUsage buildUsage(FieldReference alias, float boost) {
-        return new FieldUsage(definition(alias.getName()), alias.getBoost() * boost);
+        return lookupOrBuild(alias.getName(), alias.getBoost() * boost);
     }
 
-    private FieldDefinition definition(String field) {
-        FieldDefinition result = fields.get(field);
-        if (result == null) {
-            // TODO is it worth caching these in the field definitions?
-            return new FieldDefinition(
-                    firstNonNull(resolver.resolveIndexName(field), field),
-                    resolver.resolveIndexName(field + ".precise"),
-                    resolver.resolveIndexName(field + ".reverse_precise"),
-                    resolver.resolveIndexName(field + ".prefix_precise"));
+    private FieldUsage lookupOrBuild(String field, float boost) {
+        FieldUsage canonical = resolvedFields.get(field);
+        if (canonical == null) {
+            Tuple<String, Analyzer> standard;
+            Tuple<String, Analyzer> precise;
+            Tuple<String, Analyzer> reversePrecise;
+            Tuple<String, Analyzer> prefixPrecise;
+
+            FieldDefinition definition = fields.get(field);
+            if (definition == null) {
+                // There isn't a definition so we have to guess.
+                /*
+                 * If the standard field isn't mapped we just use the standard
+                 * mapper. We probably won't find anything but that is what the
+                 * user expect when they search for a field that doesn't exist.
+                 */
+                standard = resolve(field, field, resolver.defaultStandardSearchAnalyzer());
+                /*
+                 * For all the other fields we just don't use them if they
+                 * aren't mapped. This is appropriate since we're just guessing
+                 * at their names based on a pattern.
+                 */
+                precise = resolve(field + ".precise", null, null);
+                reversePrecise = resolve(field + ".reverse_precise", null, null);
+                prefixPrecise = resolve(field + ".prefix_precise", null, null);
+            } else {
+                // Found the definition so lets look up the fields.
+                /*
+                 * If the standard or precise fields aren't found we search on
+                 * them anyway and get no results. We're doing our best to honor
+                 * the user's request here.
+                 */
+                standard = resolve(definition.getStandard(), definition.getStandard(), resolver.defaultStandardSearchAnalyzer());
+                precise = resolve(definition.getPrecise(), definition.getPrecise(), resolver.defaultPreciseSearchAnalyzer());
+                /*
+                 * If the reversePrecise or prefixPrecise fields aren't found we
+                 * just don't use them for optimizations. We should warn the
+                 * user somehow but we don't.
+                 */
+                reversePrecise = resolve(definition.getReversePrecise(), null, null);
+                prefixPrecise = resolve(definition.getPrefixPrecise(), null, null);
+            }
+            canonical = new FieldUsage(standard.v1(), standard.v2(),
+                    precise.v1(), precise.v2(),
+                    reversePrecise.v1(), reversePrecise.v2(),
+                    prefixPrecise.v1(), prefixPrecise.v2(),
+                    1);
+            resolvedFields.put(field, canonical);
         }
-        return result;
+        if (boost == 1) {
+            return canonical;
+        }
+        return new FieldUsage(canonical.getStandard(), canonical.getStandardSearchAnalyzer(),
+                canonical.getPrecise(), canonical.getPreciseSearchAnalyzer(),
+                canonical.getReversePrecise(), canonical.getReversePreciseSearchAnalyzer(),
+                canonical.getPrefixPrecise(), canonical.getPrefixPreciseSearchAnalyzer(),
+                canonical.getBoost() * boost);
+    }
+
+    private Tuple<String, Analyzer> resolve(String fieldName, String defaultFieldName, Analyzer defaultAnalyzer) {
+        Tuple<String, Analyzer> result = resolver.resolve(fieldName);
+        if (result != null) {
+            return result;
+        }
+        return new Tuple<>(defaultFieldName, defaultAnalyzer);
     }
 }

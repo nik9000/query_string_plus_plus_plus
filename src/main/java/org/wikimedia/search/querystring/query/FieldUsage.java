@@ -1,21 +1,44 @@
 package org.wikimedia.search.querystring.query;
 
+import org.apache.lucene.analysis.Analyzer;
+
 /**
  * Enough information about a field to build any query. Build by calling
  * FieldsHelper.resolve so its safe to assume that aliases have been expanded
  * and the whitelist and blacklist have been checked.
  */
-public class FieldUsage {
-    private final FieldDefinition field;
+public class FieldUsage extends FieldDefinition {
+    private final Analyzer standardSearchAnalyzer;
+    private final Analyzer preciseSearchAnalyzer;
+    private final Analyzer reversePreciseSearchAnalyzer;
+    private final Analyzer prefixPreciseSearchAnalyzer;
     private final float boost;
 
-    public FieldUsage(FieldDefinition field, float boost) {
-        this.field = field;
+    public FieldUsage(String standard, Analyzer standardSearchAnalyzer, String precise, Analyzer preciseSearchAnalyzer,
+            String reversePrecise, Analyzer reversePreciseSearchAnalyzer, String prefixPrecise, Analyzer prefixPreciseSearchAnalyzer,
+            float boost) {
+        super(standard, precise, reversePrecise, prefixPrecise);
+        this.standardSearchAnalyzer = standardSearchAnalyzer;
+        this.preciseSearchAnalyzer = preciseSearchAnalyzer;
+        this.reversePreciseSearchAnalyzer = reversePreciseSearchAnalyzer;
+        this.prefixPreciseSearchAnalyzer = prefixPreciseSearchAnalyzer;
         this.boost = boost;
     }
 
-    public FieldDefinition getField() {
-        return field;
+    public Analyzer getStandardSearchAnalyzer() {
+        return standardSearchAnalyzer;
+    }
+
+    public Analyzer getPreciseSearchAnalyzer() {
+        return preciseSearchAnalyzer;
+    }
+
+    public Analyzer getReversePreciseSearchAnalyzer() {
+        return reversePreciseSearchAnalyzer;
+    }
+
+    public Analyzer getPrefixPreciseSearchAnalyzer() {
+        return prefixPreciseSearchAnalyzer;
     }
 
     public float getBoost() {
@@ -25,7 +48,7 @@ public class FieldUsage {
     @Override
     public String toString() {
         StringBuilder b = new StringBuilder();
-        b.append(field);
+        b.append(super.toString());
         if (boost != 1) {
             b.append('^').append(boost);
         }

@@ -25,6 +25,7 @@ public interface FieldQueryBuilder {
      */
     public static class Settings {
         private int maxPhraseSlop = 20;
+        private int termQueryPhraseSlop = 0;
         private int fuzzyPrefixLength = FuzzyQuery.defaultPrefixLength;
         private RewriteMethod rewriteMethod;
         private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
@@ -37,6 +38,18 @@ public interface FieldQueryBuilder {
 
         public void setMaxPhraseSlop(int maxPhraseSlop) {
             this.maxPhraseSlop = maxPhraseSlop;
+        }
+
+        /**
+         * Slop used in phrase queries generated when terms analyze to multiple
+         * tokens.
+         */
+        public int getTermQueryPhraseSlop() {
+            return termQueryPhraseSlop;
+        }
+
+        public void setTermQueryPhraseSlop(int termQueryPhraseSlop) {
+            this.termQueryPhraseSlop = termQueryPhraseSlop;
         }
 
         public int getFuzzyPrefixLength() {

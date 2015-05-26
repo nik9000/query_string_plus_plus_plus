@@ -42,7 +42,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
     public Query parse(QueryParseContext parseContext) throws IOException, QueryParsingException {
         DefaultingQueryBuilder.Settings defaultSettings = new DefaultingQueryBuilder.Settings();
         FieldQueryBuilder.Settings fieldSettings = new FieldQueryBuilder.Settings();
-        FieldsHelper fieldsHelper = new FieldsHelper(new ElasticsearchFieldDetector(parseContext));
+        FieldsHelper fieldsHelper = new FieldsHelper(new ElasticsearchFieldResolver(parseContext));
         boolean defaultIsAnd = true;
         boolean emptyIsMatchAll = true;
         UnauthorizedAction defaultFieldUnauthorizedAction = UnauthorizedAction.WHITELIST;
