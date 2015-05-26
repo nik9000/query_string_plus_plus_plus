@@ -7,12 +7,12 @@ public class QueryStringPlusPlusPlusPlugin extends AbstractPlugin {
 
     @Override
     public String description() {
-        return "Elasticsearch Highlighter designed for easy tinkering.";
+        return "Super query_string!";
     }
 
     @Override
     public String name() {
-        return "experimental highlighter";
+        return "query string plus plus plus";
     }
 
     /**
