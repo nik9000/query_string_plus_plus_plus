@@ -8,29 +8,43 @@ trap cleanup EXIT
 
 curl -XDELETE "http://localhost:9200/qstest?pretty"
 curl -XPOST "http://localhost:9200/qstest?pretty" -d'{
-  "index" : {
-    "analysis" : {
-      "analyzer" : {
-        "stem" : {
-          "tokenizer" : "standard",
-          "filter" : ["standard", "lowercase", "kstem"]
+    "index" : {
+        "analysis" : {
+            "analyzer" : {
+                "stem" : {
+                    "tokenizer": "standard",
+                    "filter": ["standard", "lowercase", "kstem"]
+                },
+                "standard_edge": {
+                    "tokenizer": "standard",
+                    "filter": ["standard", "lowercase", "edge"]
+                }
+            },
+            "filter": {
+                "edge": {
+                    "type": "edgeNGram",
+                    "max_gram": 50
+                }
+            }
         }
-      }
     }
-  }
 }'
 curl -XPUT http://localhost:9200/qstest/test/_mapping?pretty -d'{
     "properties": {
-      "foo" : {
-        "type": "string",
-        "analyzer": "stem",
-        "fields": {
-            "precise": {
-                "type": "string",
-                "analyzer": "standard"
+        "foo" : {
+            "type": "string",
+            "analyzer": "stem",
+            "fields": {
+                "precise": {
+                    "type": "string",
+                    "analyzer": "standard"
+                },
+                "prefix_precise": {
+                    "type": "string",
+                    "analyzer": "standard_edge"
+                }
             }
         }
-      }
     }
 }'
 curl -XGET 'http://localhost:9200/_cluster/health?pretty=true&wait_for_status=yellow'
@@ -53,6 +67,15 @@ curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
     "query": {
         "qsppp": {
             "query": "stemmin?",
+            "fields": "foo"
+        }
+    }
+}' | grep '"_id" : "1"'
+echo -n "Prefix using prefix_precise..."
+curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
+    "query": {
+        "qsppp": {
+            "query": "stemmi*",
             "fields": "foo"
         }
     }
