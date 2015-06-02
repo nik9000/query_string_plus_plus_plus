@@ -28,6 +28,7 @@ import org.wikimedia.search.querystring.QueryParser.OrContext;
 import org.wikimedia.search.querystring.QueryParser.PhraseContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
+import org.wikimedia.search.querystring.QueryParser.RegexContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 import org.wikimedia.search.querystring.QueryParser.WildcardContext;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
@@ -256,6 +257,12 @@ public class QueryParserHelper {
         @Override
         public BooleanClause visitWildcard(WildcardContext ctx) {
             return wrap(builder.wildcardQuery(ctx.getText()));
+        }
+
+        @Override
+        public BooleanClause visitRegex(RegexContext ctx) {
+            String regex = ctx.content == null ? "" : ctx.content.getText();
+            return wrap(builder.regexQuery(regex));
         }
 
         private void add(BooleanQuery bq, BooleanClause clause, Occur defaultOccur) {

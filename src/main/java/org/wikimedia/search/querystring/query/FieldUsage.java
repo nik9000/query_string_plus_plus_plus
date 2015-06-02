@@ -16,8 +16,8 @@ public class FieldUsage extends FieldDefinition {
 
     public FieldUsage(String standard, Analyzer standardSearchAnalyzer, String precise, Analyzer preciseSearchAnalyzer,
             String reversePrecise, Analyzer reversePreciseSearchAnalyzer, String prefixPrecise, Analyzer prefixPreciseSearchAnalyzer,
-            float boost) {
-        super(standard, precise, reversePrecise, prefixPrecise);
+            String ngramField, int ngramFieldGramSize, float boost) {
+        super(standard, precise, reversePrecise, prefixPrecise, ngramField, ngramFieldGramSize);
         this.standardSearchAnalyzer = standardSearchAnalyzer;
         this.preciseSearchAnalyzer = preciseSearchAnalyzer;
         this.reversePreciseSearchAnalyzer = reversePreciseSearchAnalyzer;

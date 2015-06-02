@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.index.query.BaseQueryBuilder;
 import org.elasticsearch.index.query.BoostableQueryBuilder;
@@ -24,8 +25,8 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
     private Boolean whitelistAll;
     private Boolean allowLeadingWildcard;
     private Boolean allowPrefix;
-
     private Float boost;
+    private ToXContent regexSettings;
 
     public QueryStringPlusPlusPlusBuilder(String fields, String query) {
         this.fields = fields;
@@ -142,6 +143,18 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         return this;
     }
 
+    /**
+     * Settings to use when building regex. Set this to a
+     * SourceRegexFilterBuilder.Settings to use wikimedia-extra's regexes. There
+     * are currently no other value regex implementations but we don't declare
+     * this to be of that type so that we don't need that type on the classpath
+     * to use the builder.
+     */
+    public QueryStringPlusPlusPlusBuilder regexSettings(ToXContent regexSettings) {
+        this.regexSettings = regexSettings;
+        return this;
+    }
+
     @Override
     public QueryStringPlusPlusPlusBuilder boost(float boost) {
         this.boost = boost;
@@ -180,6 +193,12 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
                     if (definition.getPrefixPrecise() != null) {
                         builder.field("prefix_precise", definition.getPrefixPrecise());
                     }
+                    if (definition.getNgramField() != null) {
+                        builder.startObject("ngram");
+                        builder.field("name", definition.getNgramField());
+                        builder.field("gram_size", definition.getNgramFieldGramSize());
+                        builder.endObject();
+                    }
                     builder.endObject();
                 }
                 builder.endObject();
@@ -212,6 +231,9 @@ public class QueryStringPlusPlusPlusBuilder extends BaseQueryBuilder implements 
         }
         if (allowPrefix != null) {
             builder.field("allow_prefix", allowPrefix);
+        }
+        if (regexSettings != null) {
+            builder.field("regex", regexSettings);
         }
         builder.endObject();
     }

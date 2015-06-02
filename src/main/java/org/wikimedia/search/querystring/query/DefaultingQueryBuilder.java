@@ -86,6 +86,11 @@ public class DefaultingQueryBuilder implements QueryBuilder {
     }
 
     @Override
+    public Query regexQuery(String regex) {
+        return delegate.regexQuery(regex);
+    }
+
+    @Override
     public Query fieldExists() {
         return delegate.fieldExists();
     }

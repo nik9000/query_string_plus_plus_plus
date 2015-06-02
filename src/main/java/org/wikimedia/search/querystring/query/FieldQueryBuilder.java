@@ -20,6 +20,8 @@ public interface FieldQueryBuilder {
 
     Query wildcardQuery(String term);
 
+    Query regexQuery(String regex);
+
     Query fieldExists();
 
     /**
@@ -34,6 +36,7 @@ public interface FieldQueryBuilder {
         private boolean allowLeadingWildcard;
         private boolean allowPrefix = true;
         private boolean shouldUseFieldNamesFieldForExists = false;
+        private RegexQueryBuilder regexQueryBuilder = RegexQueryBuilder.NONE;
 
         public int getMaxPhraseSlop() {
             return maxPhraseSlop;
@@ -110,6 +113,14 @@ public interface FieldQueryBuilder {
 
         public void setShouldUseFieldNamesFieldForExists(boolean shouldUseFieldNamesFieldForExists) {
             this.shouldUseFieldNamesFieldForExists = shouldUseFieldNamesFieldForExists;
+        }
+
+        public RegexQueryBuilder getRegexQueryBuilder() {
+            return regexQueryBuilder;
+        }
+
+        public void setRegexQueryBuilder(RegexQueryBuilder regexQueryBuilder) {
+            this.regexQueryBuilder = regexQueryBuilder;
         }
     }
 }

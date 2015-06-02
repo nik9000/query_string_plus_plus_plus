@@ -62,6 +62,15 @@ public class MultiFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     @Override
+    public Query regexQuery(String regex) {
+        BooleanQuery bq = or();
+        for (FieldQueryBuilder fieldDelegate : fieldDelegates) {
+            bq.add(fieldDelegate.regexQuery(regex), Occur.SHOULD);
+        }
+        return bq;
+    }
+
+    @Override
     public Query fieldExists() {
         BooleanQuery bq = or();
         for (FieldQueryBuilder fieldDelegate : fieldDelegates) {

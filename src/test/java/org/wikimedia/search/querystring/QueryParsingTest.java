@@ -49,17 +49,21 @@ import org.elasticsearch.common.base.Splitter;
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.Iterables;
 import org.elasticsearch.common.collect.ListMultimap;
+import org.elasticsearch.common.lucene.search.XFilteredQuery;
 import org.elasticsearch.index.query.support.QueryParsers;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.junit.runners.Parameterized.Parameter;
 import org.junit.runners.Parameterized.Parameters;
+import org.wikimedia.search.extra.regex.SourceRegexFilter;
+import org.wikimedia.search.extra.util.FieldValues;
 import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
+import org.wikimedia.search.querystring.query.RegexQueryBuilder;
 
 /**
  * Tests that the parser builds the right queries.
@@ -161,8 +165,6 @@ public class QueryParsingTest {
                 { query("fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~2"), //
                         "fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo~" }, //
                 { query("pickl*"), "pickl*" }, //
-                // TODO this is probably not quite right - * for a term should
-                // be that it is defined at all
                 { and("pickl", "*"), "pickl *" }, //
                 { query("pickl?"), "pickl?" }, //
                 { query("pic???"), "pic???" }, //
@@ -235,6 +237,15 @@ public class QueryParsingTest {
                 // Synonyms
                 { or("foo", "bar"), "foo", "standardAnalyzer=synonym" }, //
                 { phrase(new Object[] { "foo", "bar" }, "baz"), "\"foo baz\"", "preciseAnalyzer=synonym" }, //
+                // Regexes are just terms when disallowed
+                { query("foo"), "/foo./", "allowRegex=false" },//
+                { new TermQuery(new Term("field", "/foo./")), "/foo./", "allowRegex=false, standardAnalyzer=keyword" },//
+                // Allowed regexes are regexes
+                { query("/foo./[3]"), "/foo./" },//
+                { query("/f\\oo./[3]"), "/f\\oo./" },//
+                { query("/cat|dog|crumpet/[3]"), "/cat|dog|crumpet/" },//
+                // Regexes are fine even without the ngram field
+                { query("another:/foo./"), "another:/foo./" },//
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -256,8 +267,11 @@ public class QueryParsingTest {
             boolean allowLeadingWildcard = false;
             Map<String, String> reverseFields = new HashMap<>();
             Map<String, String> prefixFields = new HashMap<>();
+            Map<String, String> ngramFields = new HashMap<>();
+            ngramFields.put("field", "trigram_field");
             Analyzer standardAnalyzer = parseAnalyzer("english");
             Analyzer preciseAnalyzer = parseAnalyzer("standard");
+            boolean allowRegex = true;
             String label;
             switch (param.length) {
             case 2:
@@ -319,6 +333,10 @@ public class QueryParsingTest {
                 if (newPreciseAnalyzer != null) {
                     preciseAnalyzer = parseAnalyzer(newPreciseAnalyzer);
                 }
+                String newAllowRegex = settings.remove("allowRegex");
+                if (newAllowRegex != null) {
+                    allowRegex = Boolean.parseBoolean(newAllowRegex);
+                }
                 if (!settings.isEmpty()) {
                     throw new RuntimeException("Invalid example settings: " + param[2]);
                 }
@@ -327,7 +345,7 @@ public class QueryParsingTest {
                 throw new RuntimeException("Invalid example:  " + Arrays.toString(param));
             }
             params.add(new Object[] { label, expected, toParse, defaultIsAnd, emptyIsMatchAll, fields, aliases, whitelist, blacklist,
-                    allowLeadingWildcard, reverseFields, prefixFields, standardAnalyzer, preciseAnalyzer });
+                    allowLeadingWildcard, reverseFields, prefixFields, ngramFields, standardAnalyzer, preciseAnalyzer, allowRegex });
         }
         return params;
     }
@@ -368,9 +386,13 @@ public class QueryParsingTest {
     @Parameter(11)
     public Map<String, String> prefixFields;
     @Parameter(12)
-    public Analyzer standardAnalyzer;
+    public Map<String, String> ngramFields;
     @Parameter(13)
+    public Analyzer standardAnalyzer;
+    @Parameter(14)
     public Analyzer preciseAnalyzer;
+    @Parameter(15)
+    public boolean allowRegex;
 
     @Test
     public void parse() {
@@ -404,11 +426,14 @@ public class QueryParsingTest {
             FieldReference reference = fieldReference(field);
             FieldUsage usage = new FieldUsage(reference.getName(), standardAnalyzer, "precise_" + reference.getName(), preciseAnalyzer,
                     reverseFields.get(reference.getName()), reversePreciseAnalyzer, prefixFields.get(reference.getName()),
-                    prefixPreciseAnalyzer, reference.getBoost());
+                    prefixPreciseAnalyzer, ngramFields.get(reference.getName()), 3, reference.getBoost());
             usages.add(usage);
         }
         FieldQueryBuilder.Settings settings = new FieldQueryBuilder.Settings();
         settings.setAllowLeadingWildcard(allowLeadingWildcard);
+        if (allowRegex) {
+            settings.setRegexQueryBuilder(new RegexQueryBuilder.WikimediaExtraRegexQueryBuilder());
+        }
         return new DefaultingQueryBuilder(UNCHANCED_DEFAULT_SETTINGS, new BasicQueryBuilder(settings, usages));
     }
 
@@ -531,6 +556,28 @@ public class QueryParsingTest {
                     UNCHANGED_SETTINGS.getFuzzyMaxExpansions(), false);
             QueryParsers.setRewriteMethod(fq, UNCHANGED_SETTINGS.getRewriteMethod());
             return fq;
+        }
+        m = Pattern.compile("/((?:[^/]|\\/)+)/(?:\\[(\\d+)\\])?").matcher(s);
+        if (m.matches()) {
+            String gramSizeString = m.group(2);
+            String ngramField;
+            int gramSize;
+            if (gramSizeString == null) {
+                gramSize = 3;
+                ngramField = null;
+            } else {
+                gramSize = Integer.parseInt(gramSizeString, 10);
+                switch (gramSize) {
+                case 3:
+                    ngramField = "trigram_" + field;
+                    break;
+                default:
+                    throw new RuntimeException("no idea how to make a gram size of " + gramSize + "into a field name");
+                }
+            }
+            SourceRegexFilter filter = new SourceRegexFilter(field, ngramField, m.group(1), FieldValues.loadFromSource(),
+                    new SourceRegexFilter.Settings(), gramSize);
+            return new XFilteredQuery(newMatchAllQuery(), filter);
         }
         if (s.contains("?") || s.substring(0, s.length() - 1).contains("*")) {
             field = !specifiedField ? "precise_" + field : field;

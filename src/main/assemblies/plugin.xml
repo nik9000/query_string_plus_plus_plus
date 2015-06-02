@@ -15,6 +15,7 @@
                 <exclude>org.apache.lucene:*</exclude>
                 <exclude>org.antlr:antlr4-runtime</exclude>
                 <exclude>org.abego.treelayout:org.abego.treelayout.core</exclude>
+                <exclude>org.wikimedia.search:extra</exclude>
             </excludes>
         </dependencySet>
     </dependencySets>

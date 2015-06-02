@@ -29,6 +29,7 @@ import org.wikimedia.search.querystring.query.FieldDefinition;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
+import org.wikimedia.search.querystring.query.RegexQueryBuilder;
 
 /**
  * Parses QueryStringPlusPlusPlus.
@@ -52,7 +53,6 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
         UnauthorizedAction defaultFieldUnauthorizedAction = UnauthorizedAction.WHITELIST;
         Float boost = null;
         String fields = null;
-        // TODO quoted fields.
         String query = null;
 
         XContentParser parser = parseContext.parser();
@@ -87,6 +87,11 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 case "allow_prefix":
                 case "allowPrefix":
                     fieldSettings.setAllowPrefix(parser.booleanValue());
+                    break;
+                case "regex":
+                    if (parser.booleanValue()) {
+                        initWikimediaExtraRegexBuilder(parseContext, fieldSettings);
+                    }
                     break;
                 default:
                     throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName + "]");
@@ -157,6 +162,16 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                         }
                     }
                     break;
+                case "regex":
+                    initWikimediaExtraRegexBuilder(parseContext, fieldSettings);
+                    while ((token = parser.nextToken()) != END_OBJECT) {
+                        if (token == FIELD_NAME) {
+                            currentFieldName = parser.currentName();
+                        } else {
+                            fieldSettings.getRegexQueryBuilder().parseSetting(currentFieldName, parser);
+                        }
+                    }
+                    break;
                 default:
                     throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [" + currentFieldName + "]");
                 }
@@ -207,6 +222,8 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 String precise = null;
                 String reversePrecise = null;
                 String prefixPrecise = null;
+                String ngram = null;
+                int ngramGramSize = -1;
                 while ((token = parser.nextToken()) != END_OBJECT) {
                     if (token == FIELD_NAME) {
                         currentFieldName = parser.currentName();
@@ -230,11 +247,46 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                             throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions."
                                     + currentFieldName + "]");
                         }
+                    } else if (token == START_OBJECT) {
+                        switch (currentFieldName) {
+                        case "ngram":
+                            while ((token = parser.nextToken()) != END_OBJECT) {
+                                if (token == FIELD_NAME) {
+                                    currentFieldName = parser.currentName();
+                                } else if (token.isValue()) {
+                                    switch (currentFieldName) {
+                                    case "name":
+                                        ngram = parser.text();
+                                        break;
+                                    case "gram_size":
+                                    case "gramSize":
+                                        ngramGramSize = parser.intValue();
+                                        break;
+                                    default:
+                                        throw new QueryParsingException(parseContext.index(),
+                                                "[qsppp] query does not support [fields.definitions.ngram." + currentFieldName + "]");
+                                    }
+                                }
+                            }
+                            break;
+                        default:
+                            throw new QueryParsingException(parseContext.index(), "[qsppp] query does not support [fields.definitions."
+                                    + currentFieldName + "]");
+                        }
                     }
                 }
                 standard = MoreObjects.firstNonNull(standard, name);
-                fieldsHelper.addField(name, new FieldDefinition(standard, precise, reversePrecise, prefixPrecise));
+                fieldsHelper.addField(name, new FieldDefinition(standard, precise, reversePrecise, prefixPrecise, ngram, ngramGramSize));
             }
+        }
+    }
+
+    private void initWikimediaExtraRegexBuilder(QueryParseContext parseContext, FieldQueryBuilder.Settings fieldSettings) {
+        try {
+            fieldSettings.setRegexQueryBuilder(new RegexQueryBuilder.WikimediaExtraRegexQueryBuilder());
+        } catch (NoClassDefFoundError e) {
+            throw new QueryParsingException(parseContext.index(),
+                    "[qsppp] query tried to initialize regexes but Wikimedia-extra plugin not on the classpath", e);
         }
     }
 }

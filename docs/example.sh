@@ -104,5 +104,15 @@ curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
         }
     }
 }' | grep '"total" : 0'
+echo -n "Regex..."
+curl -s -XPOST 'localhost:9200/qstest/test/_search?pretty' -d '{
+    "query": {
+        "qsppp": {
+            "query": "/tem.i/",
+            "fields": "foo",
+            "regex": true
+        }
+    }
+}' | grep '"total" : 1'
 
 echo Victory!

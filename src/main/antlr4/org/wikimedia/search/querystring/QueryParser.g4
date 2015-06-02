@@ -13,14 +13,15 @@ must      : PLUS WS? fielded;
 mustNot   : MINUS WS? fielded;
 fielded   : (fields COLON)? boosted;
 boosted   : term (CARET boost=decimalPlease)?;
-term      : fuzzy | prefix | fieldExists | wildcard | paren | phrase | basicTerm;
+term      : fuzzy | prefix | fieldExists | wildcard | paren | phrase | regex | basicTerm;
 fuzzy     : TERM TWIDDLE fuzziness=decimalPlease?;
 prefix    : TERM STAR;
 fieldExists : STAR;
 wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
 paren     : LPAREN WS? infixOp WS? RPAREN;
-phrase    : QUOTE QUOTED_TERM* ((LQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?) | EOF);
-basicTerm : (TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR | COMMA)+?;
+phrase    : QUOTE QUOTED_TERM* ((RQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?) | EOF);
+regex     : SLASH content=REGEX_CONTENT? RSLASH;
+basicTerm : (TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR | COMMA | SLASH)+?;
 
 decimalPlease   : INTEGER | DECIMAL | basicTerm; // Basic term is required to handle weird queries - those aren't valid but we have to degrade.
 fields    : field (COMMA WS? field)*;

@@ -2,8 +2,10 @@ package org.wikimedia.search.querystring.elasticsearch;
 
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertAcked;
+import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertFailures;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertHitCount;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertSearchHits;
+import static org.hamcrest.Matchers.containsString;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
@@ -13,8 +15,10 @@ import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.plugins.PluginsService;
+import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.test.ElasticsearchIntegrationTest;
 import org.junit.Test;
+import org.wikimedia.search.extra.regex.SourceRegexFilterBuilder;
 import org.wikimedia.search.querystring.query.FieldDefinition;
 
 /**
@@ -71,7 +75,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
 
     @Test
     public void detectedFieldsArentWhitelisted() throws InterruptedException, ExecutionException, IOException {
-        buildPreciseAndReverseIndex();
+        buildNiceMapping();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("auto", "stemming"));
         assertHitCount(search(builder("auto", "stem")), 1);
         assertHitCount(search(builder("auto", "auto.precise:stemming")), 0);
@@ -179,17 +183,17 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
 
     @Test
     public void multiFields() throws InterruptedException, ExecutionException, IOException {
-        buildPreciseAndReverseIndex();
+        buildNiceMapping();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
         assertHitCount(search(builder("explicit", "foo")), 1);
     }
 
     @Test
     public void rewrites() throws InterruptedException, ExecutionException, IOException {
-        buildPreciseAndReverseIndex();
+        buildNiceMapping();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo", "auto", "foo"));
         FieldDefinition explicitField = new FieldDefinition("explicit", "explicit.break_auto_precise",
-                "explicit.break_auto_reverse_precise", "explicit.break_auto_prefix_precise");
+                "explicit.break_auto_reverse_precise", "explicit.break_auto_prefix_precise", "explicit.trigram", 3);
         QueryStringPlusPlusPlusBuilder builder = builder("explicit", "*oo");
         assertHitCount(search(builder), 0);
         assertHitCount(search(builder.define("explicit", explicitField)), 1);
@@ -222,6 +226,30 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertSearchHits(search(builder("a,b", "a:* NOT b:*")), "1");
     }
 
+    @Test
+    public void regex() throws InterruptedException, ExecutionException, IOException {
+        buildNiceMapping();
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("explicit", "foo bar", "auto", "foo bar"));
+        FieldDefinition explicitField = new FieldDefinition("explicit", "explicit.break_auto_precise",
+                "explicit.break_auto_reverse_precise", "explicit.break_auto_prefix_precise", "explicit.break_auto_trigram", 3);
+        QueryStringPlusPlusPlusBuilder builder = builder("explicit", "/oo b/");
+        SourceRegexFilterBuilder.Settings settings = new SourceRegexFilterBuilder.Settings();
+        assertHitCount(search(builder), 0);
+        assertHitCount(search(builder.regexSettings(settings)), 1);
+        assertHitCount(search(builder.regexSettings(null).define("explicit", explicitField)), 0);
+        assertHitCount(search(builder.regexSettings(settings)), 1);
+        /*
+         * No need to define the auto field - its subfields follow a pattern the
+         * query automatically detects.
+         */
+        builder = builder("auto", "/oo b/");
+        assertHitCount(search(builder.regexSettings(settings)), 1);
+        builder = builder("explicit", "/oo b/");
+        settings.rejectUnaccelerated(true);
+        assertFailures(client().prepareSearch("test").setQuery(builder.regexSettings(settings)), RestStatus.INTERNAL_SERVER_ERROR,
+                containsString("Unable to accelerate \"oo b\""));
+    }
+
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
         return new QueryStringPlusPlusPlusBuilder(fields, query);
     }
@@ -239,7 +267,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         return client().prepareSearch("test").setQuery(builder).get();
     }
 
-    private void buildPreciseAndReverseIndex() throws IOException {
+    private void buildNiceMapping() throws IOException {
         XContentBuilder mapping = jsonBuilder().startObject();
         mapping.startObject("test").startObject("properties");
         fieldWithSubFields(mapping, "explicit", true);
@@ -263,6 +291,12 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
                     settings.field("filter", "standard", "lowercase", "prefix");
                 }
                 settings.endObject();
+                settings.startObject("trigram");
+                {
+                    settings.field("tokenizer", "trigram");
+                    settings.field("filter", "lowercase");
+                }
+                settings.endObject();
             }
             settings.endObject();
             settings.startObject("filter");
@@ -271,6 +305,17 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
                 {
                     settings.field("type", "edgeNGram");
                     settings.field("max_grap", 255);
+                }
+                settings.endObject();
+            }
+            settings.endObject();
+            settings.startObject("tokenizer");
+            {
+                settings.startObject("trigram");
+                {
+                    settings.field("type", "ngram");
+                    settings.field("min_gram", 3);
+                    settings.field("max_gram", 3);
                 }
                 settings.endObject();
             }
@@ -291,6 +336,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
             field(mapping, namePrefix + "precise", "standard");
             field(mapping, namePrefix + "reverse_precise", "reverse_standard");
             field(mapping, namePrefix + "prefix_precise", "prefix_standard");
+            field(mapping, namePrefix + "trigram", "trigram");
             mapping.endObject();
         }
         mapping.endObject();

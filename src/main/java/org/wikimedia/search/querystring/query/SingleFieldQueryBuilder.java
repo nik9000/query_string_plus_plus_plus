@@ -121,6 +121,15 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     @Override
+    public Query regexQuery(String regex) {
+        Query q = settings.getRegexQueryBuilder().regexQuery(field, regex);
+        if (q != null) {
+            return q;
+        }
+        return termQuery("/" + regex + "/");
+    }
+
+    @Override
     public Query fieldExists() {
         if (settings.getShouldUseFieldNamesFieldForExists()) {
             return new TermQuery(new Term(FieldNamesFieldMapper.NAME, field.getStandard()));

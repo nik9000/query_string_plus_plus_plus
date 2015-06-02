@@ -42,6 +42,11 @@ public class BoostingFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     @Override
+    public Query regexQuery(String regex) {
+        return boost(delegate.regexQuery(regex));
+    }
+
+    @Override
     public Query fieldExists() {
         return boost(delegate.fieldExists());
     }

@@ -355,7 +355,12 @@
       <groupId>org.antlr</groupId>
       <artifactId>antlr4-runtime</artifactId>
       <version>${antlr.version}</version>
-      <!-- TODO this must be shaded -->
+    </dependency>
+    <dependency>
+      <groupId>org.wikimedia.search</groupId>
+      <artifactId>extra</artifactId>
+      <version>1.5.1-SNAPSHOT</version>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <!-- Must come before Elasticsearch dependency. -->

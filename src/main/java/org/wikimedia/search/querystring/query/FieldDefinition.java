@@ -10,16 +10,21 @@ public class FieldDefinition {
     private final String precise;
     private final String reversePrecise;
     private final String prefixPrecise;
+    private final String ngramField;
+    private final int ngramFieldGramSize;
 
-    public FieldDefinition(String standard, @Nullable String precise, @Nullable String reversePrecise, @Nullable String prefixPrecise) {
+    public FieldDefinition(String standard, @Nullable String precise, @Nullable String reversePrecise, @Nullable String prefixPrecise,
+            String ngramField, int ngramFieldGramSize) {
         this.standard = standard;
         this.precise = precise;
         this.reversePrecise = reversePrecise;
         this.prefixPrecise = prefixPrecise;
+        this.ngramField = ngramField;
+        this.ngramFieldGramSize = ngramFieldGramSize;
     }
 
     public FieldDefinition(String standard, @Nullable String precise) {
-        this(standard, precise, null, null);
+        this(standard, precise, null, null, null, -1);
     }
 
     public FieldDefinition(String standard) {
@@ -59,6 +64,17 @@ public class FieldDefinition {
         return prefixPrecise;
     }
 
+    /**
+     * Field used by ngram accelerated regex search.
+     */
+    public String getNgramField() {
+        return ngramField;
+    }
+
+    public int getNgramFieldGramSize() {
+        return ngramFieldGramSize;
+    }
+
     @Override
     public String toString() {
         if (precise == null) {
@@ -72,6 +88,9 @@ public class FieldDefinition {
         }
         if (prefixPrecise != null) {
             b.append('*').append(prefixPrecise);
+        }
+        if (ngramField != null) {
+            b.append('/').append(ngramField).append('(').append(ngramFieldGramSize).append(')');
         }
         b.append(')');
         return b.toString();

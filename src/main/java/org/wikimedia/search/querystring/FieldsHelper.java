@@ -174,6 +174,8 @@ public class FieldsHelper {
             Tuple<String, Analyzer> precise;
             Tuple<String, Analyzer> reversePrecise;
             Tuple<String, Analyzer> prefixPrecise;
+            Tuple<String, Analyzer> ngram;
+            int ngramGramSize;
 
             FieldDefinition definition = fields.get(field);
             if (definition == null) {
@@ -192,6 +194,8 @@ public class FieldsHelper {
                 precise = resolve(field + ".precise", null, null);
                 reversePrecise = resolve(field + ".reverse_precise", null, null);
                 prefixPrecise = resolve(field + ".prefix_precise", null, null);
+                ngram = resolve(field + ".trigram", null, null);
+                ngramGramSize = 3;
             } else {
                 // Found the definition so lets look up the fields.
                 /*
@@ -208,11 +212,14 @@ public class FieldsHelper {
                  */
                 reversePrecise = resolve(definition.getReversePrecise(), null, null);
                 prefixPrecise = resolve(definition.getPrefixPrecise(), null, null);
+                ngram = resolve(definition.getNgramField(), null, null);
+                ngramGramSize = definition.getNgramFieldGramSize();
             }
             canonical = new FieldUsage(standard.v1(), standard.v2(),
                     precise.v1(), precise.v2(),
                     reversePrecise.v1(), reversePrecise.v2(),
                     prefixPrecise.v1(), prefixPrecise.v2(),
+                    ngram.v1(), ngramGramSize,
                     1);
             resolvedFields.put(field, canonical);
         }
@@ -223,6 +230,7 @@ public class FieldsHelper {
                 canonical.getPrecise(), canonical.getPreciseSearchAnalyzer(),
                 canonical.getReversePrecise(), canonical.getReversePreciseSearchAnalyzer(),
                 canonical.getPrefixPrecise(), canonical.getPrefixPreciseSearchAnalyzer(),
+                canonical.getNgramField(), canonical.getNgramFieldGramSize(),
                 canonical.getBoost() * boost);
     }
 

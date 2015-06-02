@@ -67,6 +67,11 @@ public class BasicQueryBuilder implements QueryBuilder {
     }
 
     @Override
+    public Query regexQuery(String regex) {
+        return fieldQueryBuilder.regexQuery(regex);
+    }
+
+    @Override
     public Query fieldExists() {
         return fieldQueryBuilder.fieldExists();
     }
