@@ -5,14 +5,19 @@ import static org.elasticsearch.common.base.MoreObjects.firstNonNull;
 import static org.elasticsearch.common.collect.Iterators.singletonIterator;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.tokenattributes.PositionIncrementAttribute;
 import org.apache.lucene.analysis.tokenattributes.TermToBytesRefAttribute;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.BooleanClause.Occur;
+import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
+import org.apache.lucene.search.MultiPhraseQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
@@ -73,7 +78,6 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
 
     @Override
     public Query prefixQuery(String term) {
-        // TODO prefix queries with an empty term are some match_all thing.
         if (field.getPrefixPrecise() != null) {
             // TODO the analyzer?
             return new TermQuery(new Term(field.getPrefixPrecise(), term));
@@ -142,25 +146,70 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         TokenStream ts = null;
         try {
             TermToBytesRefAttribute termAtt = null;
+            PositionIncrementAttribute posIncAtt = null;
+            boolean justStartedANewStream = true;
             BytesRef analyzedTerm = null;
 
-            Term firstTerm = null;
+            List<Term> termsAtCurrentPosition = new ArrayList<>();
             PhraseQuery phraseQuery = null;
+            MultiPhraseQuery multiPhraseQuery = null;
             while (true) {
                 if (ts == null) {
                     if (!term.hasNext()) {
-                        if (phraseQuery != null) {
-                            return phraseQuery;
+                        /*
+                         * We've run out of terms! Now we have to put a bow on
+                         * our query and return it.
+                         */
+                        switch (termsAtCurrentPosition.size()) {
+                        case 0:
+                            /*
+                             * Our last position wasn't interesting so lets just
+                             * return what we have - and if we have nothing
+                             * we'll just return null. That happens when you
+                             * send a stopword or punctuation only through the
+                             * analyzer.
+                             */
+                            return multiPhraseQuery != null ? multiPhraseQuery : phraseQuery;
+                        case 1:
+                            if (multiPhraseQuery != null) {
+                                multiPhraseQuery.add(termsAtCurrentPosition.get(0));
+                                return multiPhraseQuery;
+                            }
+                            if (phraseQuery != null) {
+                                phraseQuery.add(termsAtCurrentPosition.get(0));
+                                return phraseQuery;
+                            }
+                            return new TermQuery(termsAtCurrentPosition.get(0));
+                        default:
+                            if (multiPhraseQuery != null) {
+                                multiPhraseQuery.add(termsAtCurrentPosition.toArray(new Term[termsAtCurrentPosition.size()]));
+                                return multiPhraseQuery;
+                            }
+                            if (phraseQuery != null) {
+                                multiPhraseQuery = new MultiPhraseQuery();
+                                multiPhraseQuery.setSlop(phraseSlop);
+                                if (phraseQuery != null) {
+                                    // TODO copy the phrase query into the multi
+                                    // phrase query
+                                }
+                                return multiPhraseQuery;
+                            }
+                            BooleanQuery bq = new BooleanQuery();
+                            bq.setMinimumNumberShouldMatch(1);
+                            for (Term termAtCurrentPosition : termsAtCurrentPosition) {
+                                bq.add(new TermQuery(termAtCurrentPosition), Occur.SHOULD);
+                            }
+                            return bq;
                         }
-                        if (firstTerm != null) {
-                            return new TermQuery(firstTerm);
-                        }
-                        return null;
                     }
                     ts = analyzer.tokenStream(field, term.next());
                     termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
+                    posIncAtt = ts.addAttribute(PositionIncrementAttribute.class);
                     analyzedTerm = termAtt.getBytesRef();
+                    justStartedANewStream = true;
                     ts.reset();
+                } else {
+                    justStartedANewStream = false;
                 }
                 if (!ts.incrementToken()) {
                     ts.end();
@@ -183,20 +232,41 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                  * Ok - analyzedTerm now contains an actual, non empty term.
                  * Time to do something with it.
                  */
-                if (firstTerm == null) {
-                    // If its the first term lets just store it.
-                    firstTerm = new Term(field, BytesRef.deepCopyOf(analyzedTerm));
-                    continue;
+                Term currentTerm = new Term(field, BytesRef.deepCopyOf(analyzedTerm));
+                if (justStartedANewStream || posIncAtt.getPositionIncrement() != 0) {
+                    /*
+                     * We're at a new position so dump the terms we've
+                     * accumulated.
+                     */
+                    switch (termsAtCurrentPosition.size()) {
+                    case 0:
+                        break;
+                    case 1:
+                        if (multiPhraseQuery != null) {
+                            multiPhraseQuery.add(termsAtCurrentPosition.get(0));
+                        } else {
+                            if (phraseQuery == null) {
+                                phraseQuery = new PhraseQuery();
+                                phraseQuery.setSlop(phraseSlop);
+                            }
+                            phraseQuery.add(termsAtCurrentPosition.get(0));
+                        }
+                        break;
+                    default:
+                        if (multiPhraseQuery == null) {
+                            multiPhraseQuery = new MultiPhraseQuery();
+                            multiPhraseQuery.setSlop(phraseSlop);
+                            if (phraseQuery != null) {
+                                // TODO copy the phrase query into the multi
+                                // phrase query
+                                phraseQuery = null;
+                            }
+                        }
+                        multiPhraseQuery.add(termsAtCurrentPosition.toArray(new Term[termsAtCurrentPosition.size()]));
+                    }
+                    termsAtCurrentPosition.clear();
                 }
-                if (phraseQuery == null) {
-                    // Its the second term - lets build a phrase query for it
-                    phraseQuery = new PhraseQuery();
-                    phraseQuery.setSlop(phraseSlop);
-                    phraseQuery.add(firstTerm);
-                    // Note we don't break here - we want to add the next term.
-                }
-                // We already have the phrase query so lets expand on it.
-                phraseQuery.add(new Term(field, BytesRef.deepCopyOf(analyzedTerm)));
+                termsAtCurrentPosition.add(currentTerm);
             }
         } catch (IOException e) {
             throw new RuntimeException("Unexpected IOException from Lucene when they shouldn't be possible.", e);

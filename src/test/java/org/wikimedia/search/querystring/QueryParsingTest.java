@@ -7,6 +7,8 @@ import static org.junit.Assert.assertEquals;
 import static org.wikimedia.search.querystring.FieldsParsingTest.BOOST_PATTERN;
 import static org.wikimedia.search.querystring.FieldsParsingTest.fieldReference;
 
+import java.io.IOException;
+import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -21,20 +23,28 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.core.KeywordAnalyzer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.standard.StandardFilter;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.synonym.SynonymFilter;
+import org.apache.lucene.analysis.synonym.SynonymMap;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.index.Term;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
+import org.apache.lucene.search.MultiPhraseQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.util.CharsRef;
 import org.elasticsearch.common.base.Splitter;
 import org.elasticsearch.common.collect.ArrayListMultimap;
 import org.elasticsearch.common.collect.Iterables;
@@ -222,7 +232,9 @@ public class QueryParsingTest {
                 { phrase("日", "本", "語"), "\"日本語\"" }, //
                 { and(phrase("field:日", "field:本", "field:語"), "more", "word", phrase("field:共", "field:通", "field:語")),
                         "日本語 more words 共通語" }, //
-        // TODO fields can't be integer or contain them!
+                // Synonyms
+                { or("foo", "bar"), "foo", "standardAnalyzer=synonym" }, //
+                { phrase(new Object[] { "foo", "bar" }, "baz"), "\"foo baz\"", "preciseAnalyzer=synonym" }, //
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -417,7 +429,7 @@ public class QueryParsingTest {
         return bq;
     }
 
-    private static PhraseQuery phrase(Object... terms) {
+    private static Query phrase(Object... terms) {
         PhraseQuery pq = new PhraseQuery();
         int i = 0;
         if (terms[i] instanceof Number) {
@@ -426,17 +438,53 @@ public class QueryParsingTest {
             pq.setSlop(0);
         }
         for (; i < terms.length; i++) {
-            String s = terms[i].toString();
-            Term t;
-            Matcher m = FIELD_PATTERN.matcher(s);
-            if (m.matches()) {
-                t = new Term(m.group(1), m.group(2));
-            } else {
-                t = new Term("precise_field", s);
+            Object t = terms[i];
+            if (t instanceof Object[] || t instanceof String[]) {
+                return multiphrase(terms);
             }
-            pq.add(t);
+            pq.add(phraseTerm(terms[i].toString()));
         }
         return pq;
+    }
+
+    private static Query multiphrase(Object... terms) {
+        MultiPhraseQuery pq = new MultiPhraseQuery();
+        int i = 0;
+        if (terms[i] instanceof Number) {
+            pq.setSlop(((Number) terms[i++]).intValue());
+        } else {
+            pq.setSlop(0);
+        }
+        for (; i < terms.length; i++) {
+            Object t = terms[i];
+            if (t instanceof Object[]) {
+                Object[] objects = (Object[]) t;
+                String[] strings = new String[objects.length];
+                for (int j = 0; j < objects.length; j++) {
+                    strings[j] = objects[j].toString();
+                }
+                t = strings;
+            }
+            if (t instanceof String[]) {
+                String[] strings = (String[]) t;
+                Term[] termsAtPosition = new Term[strings.length];
+                for (int j = 0; j < strings.length; j++) {
+                    termsAtPosition[j] = phraseTerm(strings[j]);
+                }
+                pq.add(termsAtPosition);
+                continue;
+            }
+            pq.add(phraseTerm(terms[i].toString()));
+        }
+        return pq;
+    }
+
+    private static Term phraseTerm(String s) {
+        Matcher m = FIELD_PATTERN.matcher(s);
+        if (m.matches()) {
+            return new Term(m.group(1), m.group(2));
+        }
+        return new Term("precise_field", s);
     }
 
     private static BooleanClause clause(Object clause, Occur defaultOccur) {
@@ -512,6 +560,25 @@ public class QueryParsingTest {
             return new StandardAnalyzer(CharArraySet.EMPTY_SET);
         case "keyword":
             return new KeywordAnalyzer();
+        case "synonym":
+            return new Analyzer() {
+                @Override
+                @SuppressWarnings("resource")
+                protected TokenStreamComponents createComponents(String fieldName, Reader reader) {
+                    SynonymMap.Builder syn = new SynonymMap.Builder(false);
+                    syn.add(new CharsRef("foo"), new CharsRef("bar"), true);
+
+                    StandardTokenizer src = new StandardTokenizer(reader);
+                    TokenStream tok = new StandardFilter(src);
+                    tok = new LowerCaseFilter(src);
+                    try {
+                        tok = new SynonymFilter(src, syn.build(), false);
+                    } catch (IOException e) {
+                        throw new RuntimeException("What happened?", e);
+                    }
+                    return new TokenStreamComponents(src, tok);
+                }
+            };
         default:
             throw new RuntimeException("Unexpected analyzer:  " + name);
         }
