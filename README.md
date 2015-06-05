@@ -37,6 +37,7 @@ Options
 ```default_operator```                | The default operator for two terms next to eachother. | ```"and"``` or ```"or"```          | ```"and"```
 ```empty```                           | Query to use on an empty query string         | ```"match_all"``` or ```"match_none"```    | ```"match_all"```
 ```allow_leading_wildcard```          | Is it ok if wildcard queries start with a wildcard? | boolean                              | ```false```
+```regex```                           | Enables and configures regex search.          | [object](docs/format_regex.md)             | ```null```
 ```fields.whitelist_defaults```       | Should the fields in the ```fields.default``` parameter be automatically whitelisted? | boolean | ```true```
 ```fields.whitelist_all```            | Should all not blacklisted fields be whitelisted? | boolean                                | ```false```
 ```fields.whitelist```                | Fields that can be queried.                   | list of strings                            | ```[]```

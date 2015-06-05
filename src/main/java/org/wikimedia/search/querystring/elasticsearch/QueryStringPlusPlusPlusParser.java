@@ -223,7 +223,7 @@ public class QueryStringPlusPlusPlusParser implements QueryParser {
                 String reversePrecise = null;
                 String prefixPrecise = null;
                 String ngram = null;
-                int ngramGramSize = -1;
+                int ngramGramSize = 3;
                 while ((token = parser.nextToken()) != END_OBJECT) {
                     if (token == FIELD_NAME) {
                         currentFieldName = parser.currentName();

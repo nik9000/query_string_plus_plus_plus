@@ -17,3 +17,22 @@ the format above but they are only used if the fields are actually defined in
 the mapping. That means that if you define a field that "looks like" the
 precise field or looks like the reverse_precise field it'll automatically be
 where appropriate.
+
+You can also add an ```ngram``` to configure regular expression support. Note
+that regular expressions still have to be turned on by configuring a
+[regex](format_regex.md) settings object. Just configuring a field without that
+will do nothing. Here is an example for a field rigged for regular expression
+matching:
+
+```json
+{
+    "title": {
+        "ngram": {
+            "name": "title.trigram",
+            "gram_size": 3
+        }
+    }
+}
+```
+
+```name``` is required. ```gram_size``` defaults to 3.
