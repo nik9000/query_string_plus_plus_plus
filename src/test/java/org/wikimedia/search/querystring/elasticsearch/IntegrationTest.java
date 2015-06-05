@@ -248,6 +248,9 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         settings.rejectUnaccelerated(true);
         assertFailures(client().prepareSearch("test").setQuery(builder.regexSettings(settings)), RestStatus.INTERNAL_SERVER_ERROR,
                 containsString("Unable to accelerate \"oo b\""));
+        indexRandom(true, client().prepareIndex("test", "test", "2").setSource("auto", "cat"));
+        builder = builder("auto", "/oo b/ OR cat");
+        assertHitCount(search(builder.regexSettings(settings)), 2);
     }
 
     private static QueryStringPlusPlusPlusBuilder builder(String fields, String query) {
