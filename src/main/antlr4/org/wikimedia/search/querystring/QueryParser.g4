@@ -19,11 +19,15 @@ prefix    : TERM STAR;
 fieldExists : STAR;
 wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
 paren     : LPAREN WS? infixOp WS? RPAREN;
-phrase    : QUOTE QUOTED_TERM* ((RQUOTE ((TWIDDLE slop=INTEGER))? useNormalTerm=TWIDDLE?) | EOF);
-regex     : SLASH content=REGEX_CONTENT? RSLASH;
-basicTerm : (TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR | COMMA | SLASH)+?;
+phrase    : QUOTE (phraseTerm (WS phraseTerm)*)? ((QUOTE (TWIDDLE slop=INTEGER)? useNormalTerm=TWIDDLE?) | EOF);
+phraseTerm :fuzzy | prefix | fieldExists | wildcard | basicTerm;
+regex     : SLASH content=regexContent? SLASH;
+regexContent : basicTerm (WS basicTerm)*;
+basicTerm : (basicTermPart)+?;
+basicTermPart : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR | COMMA | DECIMAL | INTEGER | COLON | SLASH;
+
 
 decimalPlease   : INTEGER | DECIMAL | basicTerm; // Basic term is required to handle weird queries - those aren't valid but we have to degrade.
 fields    : field (COMMA WS? field)*;
 field     : fieldName (CARET boost=decimalPlease)?;
-fieldName : term (DOT term)*;
+fieldName : TERM (DOT TERM)*;

@@ -181,10 +181,13 @@ public class QueryParsingTest {
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
-                // This next one is slightly different than Cirrus
+                // This next two are slightly different than Cirrus
                 { query("precise_field:10.7227"), "\"10.7227\"yay\"" }, //
+                { query("precise_field:7227"), "\"7227\"yay\"" }, //
                 { phrase("precise_field:10.1093", "precise_field:acprof:oso", "precise_field:9780195314250.003.0001"),
                         "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
+                { phrase("field:10.1093", "field:acprof:oso", "field:9780195314250.003.0001"), "10.1093/acprof:oso/9780195314250.003.0001" }, //
+                { phrase("field:10.1093", "field:acprof:oso"), "10.1093/acprof:oso" }, //
                 { and(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" pickles \"ffnonesenseword catapult" }, //
                 { and(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),

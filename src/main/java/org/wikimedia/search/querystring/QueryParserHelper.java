@@ -6,7 +6,6 @@ import java.util.List;
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
 import org.antlr.v4.runtime.Token;
-import org.antlr.v4.runtime.tree.TerminalNode;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -26,8 +25,10 @@ import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
 import org.wikimedia.search.querystring.QueryParser.PhraseContext;
+import org.wikimedia.search.querystring.QueryParser.PhraseTermContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixContext;
 import org.wikimedia.search.querystring.QueryParser.PrefixOpContext;
+import org.wikimedia.search.querystring.QueryParser.QueryContext;
 import org.wikimedia.search.querystring.QueryParser.RegexContext;
 import org.wikimedia.search.querystring.QueryParser.UnmarkedContext;
 import org.wikimedia.search.querystring.QueryParser.WildcardContext;
@@ -54,7 +55,12 @@ public class QueryParserHelper {
     }
 
     public Query parse(String str) {
-        BooleanClause c = new Visitor().visit(buildParser(str).query());
+        QueryParser parser = buildParser(str);
+        QueryContext query = parser.query();
+        if (log.isTraceEnabled()) {
+            log.trace("Parse tree: {}", query.toStringTree(parser));
+        }
+        BooleanClause c = new Visitor().visit(query);
         if (c == null || c.getQuery() == null) {
             // We've just parsed an empty query
             return emptyIsMatchAll ? rootBuilder.matchAll() : rootBuilder.matchNone();
@@ -211,9 +217,9 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitPhrase(PhraseContext ctx) {
-            List<TerminalNode> terms = ctx.QUOTED_TERM();
+            List<PhraseTermContext> terms = ctx.phraseTerm();
             List<String> text = new ArrayList<>(terms.size());
-            for (TerminalNode term : terms) {
+            for (PhraseTermContext term : terms) {
                 text.add(term.getText().replace("\\\"", "\""));
             }
             Query pq;
