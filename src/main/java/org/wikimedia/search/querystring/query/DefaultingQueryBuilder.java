@@ -11,7 +11,6 @@ import org.apache.lucene.search.Query;
 public class DefaultingQueryBuilder implements QueryBuilder {
     public static class Settings {
         private int phraseSlop = 0;
-        private float similaritySpec = .6f;
 
         public int getPhraseSlop() {
             return phraseSlop;
@@ -19,14 +18,6 @@ public class DefaultingQueryBuilder implements QueryBuilder {
 
         public void setPhraseSlop(int phraseSlop) {
             this.phraseSlop = phraseSlop;
-        }
-
-        public float getSimilaritySpec() {
-            return similaritySpec;
-        }
-
-        public void setSimilaritySpec(float similaritySpec) {
-            this.similaritySpec = similaritySpec;
         }
     }
 
@@ -38,11 +29,7 @@ public class DefaultingQueryBuilder implements QueryBuilder {
         this.delegate = delegate;
     }
 
-    public Query fuzzyQuery(String term) {
-        return fuzzyQuery(term, settings.similaritySpec);
-    }
-
-    public Query phraseQuery(List<String> terms, boolean useQuotedTerm) {
+    public Query phraseQuery(List<PhraseTerm> terms, boolean useQuotedTerm) {
         return phraseQuery(terms, settings.phraseSlop, useQuotedTerm);
     }
 
@@ -66,7 +53,7 @@ public class DefaultingQueryBuilder implements QueryBuilder {
     }
 
     @Override
-    public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
+    public Query phraseQuery(List<PhraseTerm> terms, int slop, boolean useQuotedTerm) {
         return delegate.phraseQuery(terms, slop, useQuotedTerm);
     }
 

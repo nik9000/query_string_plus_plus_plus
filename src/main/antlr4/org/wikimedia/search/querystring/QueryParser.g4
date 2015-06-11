@@ -20,7 +20,7 @@ fieldExists : STAR;
 wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
 paren     : LPAREN WS? infixOp WS? RPAREN;
 phrase    : QUOTE (phraseTerm (WS phraseTerm)*)? ((QUOTE (TWIDDLE slop=INTEGER)? useNormalTerm=TWIDDLE?) | EOF);
-phraseTerm :fuzzy | prefix | fieldExists | wildcard | basicTerm;
+phraseTerm : fuzzy | prefix | fieldExists | wildcard | basicTerm;
 regex     : SLASH content=regexContent? SLASH;
 regexContent : basicTerm (WS basicTerm)*;
 basicTerm : (basicTermPart)+?;

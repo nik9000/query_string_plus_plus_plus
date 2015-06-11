@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
+import org.antlr.v4.runtime.RuleContext;
 import org.antlr.v4.runtime.Token;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
@@ -35,6 +36,11 @@ import org.wikimedia.search.querystring.QueryParser.WildcardContext;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
+import org.wikimedia.search.querystring.query.PhraseTerm;
+import org.wikimedia.search.querystring.query.phraseterm.FuzzyPhraseTerm;
+import org.wikimedia.search.querystring.query.phraseterm.PrefixPhraseTerm;
+import org.wikimedia.search.querystring.query.phraseterm.SimpleStringPhraseTerm;
+import org.wikimedia.search.querystring.query.phraseterm.WildcardPhraseTerm;
 
 public class QueryParserHelper {
     public static List<FieldReference> parseFields(String str) {
@@ -99,22 +105,12 @@ public class QueryParserHelper {
      * occurs means "use the default". If the Occur is set then it means an
      * override from + or - or NOT.
      */
-    private class Visitor extends QueryParserBaseVisitor<BooleanClause> {
+    private class Visitor extends PickLastAggregatingVisitor<BooleanClause> {
+        private PhraseTermVisitor phraseTermVisitor;
         private DefaultingQueryBuilder builder;
 
         public Visitor() {
             builder = rootBuilder;
-        }
-
-        /**
-         * Control default aggregation of results from multi-child nodes in the
-         * parse tree. The ANTLR default is to always take the result from the
-         * last node but we switch to taking the the last <strong>non
-         * null</string> result.
-         */
-        @Override
-        protected BooleanClause aggregateResult(BooleanClause aggregate, BooleanClause nextResult) {
-            return nextResult == null ? aggregate : nextResult;
         }
 
         @Override
@@ -218,9 +214,12 @@ public class QueryParserHelper {
         @Override
         public BooleanClause visitPhrase(PhraseContext ctx) {
             List<PhraseTermContext> terms = ctx.phraseTerm();
-            List<String> text = new ArrayList<>(terms.size());
+            List<PhraseTerm> text = new ArrayList<>(terms.size());
+            if (phraseTermVisitor == null) {
+                phraseTermVisitor = new PhraseTermVisitor();
+            }
             for (PhraseTermContext term : terms) {
-                text.add(term.getText().replace("\\\"", "\""));
+                text.add(phraseTermVisitor.visitPhraseTerm(term));
             }
             Query pq;
             if (ctx.slop == null) {
@@ -240,14 +239,15 @@ public class QueryParserHelper {
 
         @Override
         public BooleanClause visitFuzzy(FuzzyContext ctx) {
-            if (ctx.fuzziness == null) {
-                return wrap(builder.fuzzyQuery(ctx.TERM().getText()));
+            float fuzziness = Float.NEGATIVE_INFINITY;
+            if (ctx.fuzziness != null) {
+                if (ctx.fuzziness.basicTerm() != null) {
+                    // This looks like garbage in place of the slop. Icky.
+                    return wrap(builder.termQuery(ctx.getText()));
+                }
+                fuzziness = Float.parseFloat(ctx.fuzziness.getText());
             }
-            if (ctx.fuzziness.basicTerm() != null) {
-                // This looks like garbage in place of the slop. Icky.
-                return wrap(builder.termQuery(ctx.getText()));
-            }
-            return wrap(builder.fuzzyQuery(ctx.TERM().getText(), Float.parseFloat(ctx.fuzziness.getText())));
+            return wrap(builder.fuzzyQuery(ctx.TERM().getText(), fuzziness));
         }
 
         @Override
@@ -287,6 +287,45 @@ public class QueryParserHelper {
          */
         private BooleanClause wrap(Query query) {
             return new BooleanClause(query, null);
+        }
+    }
+
+    private static class PhraseTermVisitor extends PickLastAggregatingVisitor<PhraseTerm> {
+        @Override
+        public PhraseTerm visitBasicTerm(BasicTermContext ctx) {
+            return new SimpleStringPhraseTerm(getText(ctx));
+        }
+
+        @Override
+        public PhraseTerm visitPrefix(PrefixContext ctx) {
+            return new PrefixPhraseTerm(getText(ctx));
+        }
+
+        @Override
+        public PhraseTerm visitWildcard(WildcardContext ctx) {
+            return new WildcardPhraseTerm(getText(ctx));
+        }
+
+        @Override
+        public PhraseTerm visitFuzzy(FuzzyContext ctx) {
+            return new FuzzyPhraseTerm(getText(ctx));
+        }
+
+        private String getText(RuleContext ctx) {
+            return ctx.getText().replace("\\\"", "\"");
+        }
+    }
+
+    private static class PickLastAggregatingVisitor<T> extends QueryParserBaseVisitor<T> {
+        /**
+         * Control default aggregation of results from multi-child nodes in the
+         * parse tree. The ANTLR default is to always take the result from the
+         * last node but we switch to taking the the last <strong>non
+         * null</string> result.
+         */
+        @Override
+        protected T aggregateResult(T aggregate, T nextResult) {
+            return nextResult == null ? aggregate : nextResult;
         }
     }
 

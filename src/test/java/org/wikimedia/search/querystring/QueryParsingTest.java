@@ -39,11 +39,18 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.MultiPhraseQuery;
+import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper.TopTermsSpanBooleanQueryRewrite;
+import org.apache.lucene.search.spans.SpanNearQuery;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.util.CharsRef;
 import org.elasticsearch.common.base.Splitter;
 import org.elasticsearch.common.collect.ArrayListMultimap;
@@ -67,6 +74,10 @@ import org.wikimedia.search.querystring.query.RegexQueryBuilder;
 
 /**
  * Tests that the parser builds the right queries.
+ *
+ * This class works by having a very basic query builder syntax which is uses to
+ * build example queries to compare against the output of the parser. This works
+ * because Lucene queries all implements equals.
  */
 @RunWith(Parameterized.class)
 public class QueryParsingTest {
@@ -147,6 +158,7 @@ public class QueryParsingTest {
                 { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, //
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
                 { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
+                { span("foo*", "precise_field:bar"), "\"foo* bar\"" }, //
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
@@ -513,6 +525,48 @@ public class QueryParsingTest {
             return new Term(m.group(1), m.group(2));
         }
         return new Term("precise_field", s);
+    }
+
+    private static Query span(Object... terms) {
+        List<SpanQuery> spanNear = new ArrayList<>();
+        int slop = 0;
+        int i = 0;
+        if (terms[i] instanceof Number) {
+            slop = ((Number) terms[i++]).intValue();
+        }
+        for (; i < terms.length; i++) {
+            Object t = terms[i];
+            if (t instanceof String[]) {
+                String[] strings = (String[]) t;
+                Object[] o = new Object[strings.length];
+                for (int j = 0; j < strings.length; j++) {
+                    o[j] = strings[j];
+                }
+                t = o;
+            }
+            if (t instanceof Object[]) {
+                List<SpanQuery> clauses = new ArrayList<>();
+                for (Object o : (Object[]) t) {
+                    clauses.add(spanify(query(o)));
+                }
+                spanNear.add(new SpanOrQuery(clauses.toArray(new SpanQuery[clauses.size()])));
+                continue;
+            }
+            spanNear.add(spanify(query(t)));
+        }
+        return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), slop, true, false);
+    }
+
+    private static SpanQuery spanify(Query q) {
+        if (q instanceof TermQuery) {
+            return new SpanTermQuery(((TermQuery) q).getTerm());
+        }
+        if (q instanceof MultiTermQuery) {
+            MultiTermQuery mq = (MultiTermQuery) q;
+            mq.setRewriteMethod(new TopTermsSpanBooleanQueryRewrite(UNCHANGED_SETTINGS.getFuzzyMaxExpansions()));
+            return new SpanMultiTermQueryWrapper<>(mq);
+        }
+        throw new RuntimeException("No idea how to spanify:  " + q);
     }
 
     private static BooleanClause clause(Object clause, Occur defaultOccur) {

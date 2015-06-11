@@ -12,8 +12,17 @@ import org.apache.lucene.search.Query;
 public interface FieldQueryBuilder {
     Query termQuery(String term);
 
-    Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm);
+    Query phraseQuery(List<PhraseTerm> terms, int slop, boolean useQuotedTerm);
 
+    /**
+     * Build a fuzzy query.
+     *
+     * @param term the term to fuzzy match
+     * @param similaritySpec the similarity specification to use. It maps to the
+     *            number of edits. Use Float.NEGATIVE_INFINITY to use the
+     *            default
+     * @return the fuzzy query
+     */
     Query fuzzyQuery(String term, float similaritySpec);
 
     Query prefixQuery(String term);
@@ -30,6 +39,7 @@ public interface FieldQueryBuilder {
     public static class Settings {
         private int maxPhraseSlop = 20;
         private int termQueryPhraseSlop = 0;
+        private float defaultFuzzySimilaritySpec = .6f;
         private int fuzzyPrefixLength = FuzzyQuery.defaultPrefixLength;
         private RewriteMethod rewriteMethod;
         private int fuzzyMaxExpansions = FuzzyQuery.defaultMaxExpansions;
@@ -56,6 +66,14 @@ public interface FieldQueryBuilder {
 
         public void setTermQueryPhraseSlop(int termQueryPhraseSlop) {
             this.termQueryPhraseSlop = termQueryPhraseSlop;
+        }
+
+        public float getDefaultFuzzySimilaritySpec() {
+            return defaultFuzzySimilaritySpec;
+        }
+
+        public void setDefaultFuzzySimilaritySpec(float defaultFuzzySimilaritySpec) {
+            this.defaultFuzzySimilaritySpec = defaultFuzzySimilaritySpec;
         }
 
         public int getFuzzyPrefixLength() {

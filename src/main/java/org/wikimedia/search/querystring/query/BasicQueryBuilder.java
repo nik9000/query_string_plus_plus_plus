@@ -47,7 +47,7 @@ public class BasicQueryBuilder implements QueryBuilder {
     }
 
     @Override
-    public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
+    public Query phraseQuery(List<PhraseTerm> terms, int slop, boolean useQuotedTerm) {
         return fieldQueryBuilder.phraseQuery(terms, slop, useQuotedTerm);
     }
 

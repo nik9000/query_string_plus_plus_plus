@@ -18,16 +18,24 @@ import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.FuzzyQuery;
 import org.apache.lucene.search.MultiPhraseQuery;
+import org.apache.lucene.search.MultiTermQuery;
 import org.apache.lucene.search.PhraseQuery;
 import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
+import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper.TopTermsSpanBooleanQueryRewrite;
+import org.apache.lucene.search.spans.SpanNearQuery;
+import org.apache.lucene.search.spans.SpanOrQuery;
+import org.apache.lucene.search.spans.SpanQuery;
+import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.elasticsearch.index.mapper.internal.FieldNamesFieldMapper;
 import org.elasticsearch.index.query.support.QueryParsers;
+import org.wikimedia.search.querystring.query.phraseterm.SimpleStringPhraseTerm;
 
 public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     private static final ESLogger log = ESLoggerFactory.getLogger(SingleFieldQueryBuilder.class.getPackage().getName());
@@ -42,12 +50,12 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
 
     @Override
     public Query termQuery(String term) {
-        return termOrPhraseQuery(field.getStandard(), field.getStandardSearchAnalyzer(), singletonIterator(term),
-                settings.getTermQueryPhraseSlop());
+        return termOrPhraseQuery(field.getStandard(), field.getStandardSearchAnalyzer(),
+                singletonIterator(new SimpleStringPhraseTerm(term)), settings.getTermQueryPhraseSlop());
     }
 
     @Override
-    public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
+    public Query phraseQuery(List<PhraseTerm> terms, int slop, boolean useQuotedTerm) {
         slop = min(slop, settings.getMaxPhraseSlop());
         String fieldName;
         Analyzer analyzer;
@@ -64,6 +72,9 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     @Override
     public Query fuzzyQuery(String term, float similaritySpec) {
         // TODO it should totally be possible to rewrite some fuzzy
+        if (similaritySpec == Float.NEGATIVE_INFINITY) {
+            similaritySpec = settings.getDefaultFuzzySimilaritySpec();
+        }
         @SuppressWarnings("deprecation")
         int numEdits = FuzzyQuery.floatToEdits(similaritySpec, term.codePointCount(0, term.length()));
         if (numEdits == 0) {
@@ -150,8 +161,25 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         return term.charAt(0) == WildcardQuery.WILDCARD_STRING || term.charAt(0) == WildcardQuery.WILDCARD_CHAR;
     }
 
-    private Query termOrPhraseQuery(String field, Analyzer analyzer, Iterator<String> term, int phraseSlop) {
-        // TODO position increments!
+    private Query termOrPhraseQuery(String field, Analyzer analyzer, Iterator<? extends PhraseTerm> terms, int phraseSlop) {
+        // TODO position increments!l
+
+        /*
+         * This is kinda complicated, unfortunately. This method's body is
+         * devoted to iterating PhraseTerm and either sending the queries that
+         * it makes directly to builder or analyzing the terms and shipping them
+         * position by position to the builder. This is difficult because the
+         * terms sometimes overlap one another.
+         *
+         * The builder's job is to build the right query for the things its
+         * shipped. This is difficult because overlapping terms should be
+         * treated differently from special phrase terms from simple
+         * non-overlapping terms. And when the terms iterator just contains a
+         * single SimpleStringPhraseTerm that analyzes to a single term that
+         * term should become a term query instead of a single node phrase query
+         * or anything similarly complicated.
+         */
+        TermOrPhraseOrSpanQueryBuilder builder = new TermOrPhraseOrSpanQueryBuilder(phraseSlop);
         TokenStream ts = null;
         try {
             TermToBytesRefAttribute termAtt = null;
@@ -160,58 +188,22 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
             BytesRef analyzedTerm = null;
 
             List<Term> termsAtCurrentPosition = new ArrayList<>();
-            PhraseQuery phraseQuery = null;
-            MultiPhraseQuery multiPhraseQuery = null;
             while (true) {
                 if (ts == null) {
-                    if (!term.hasNext()) {
+                    if (!terms.hasNext()) {
                         /*
                          * We've run out of terms! Now we have to put a bow on
                          * our query and return it.
                          */
-                        switch (termsAtCurrentPosition.size()) {
-                        case 0:
-                            /*
-                             * Our last position wasn't interesting so lets just
-                             * return what we have - and if we have nothing
-                             * we'll just return null. That happens when you
-                             * send a stopword or punctuation only through the
-                             * analyzer.
-                             */
-                            return multiPhraseQuery != null ? multiPhraseQuery : phraseQuery;
-                        case 1:
-                            if (multiPhraseQuery != null) {
-                                multiPhraseQuery.add(termsAtCurrentPosition.get(0));
-                                return multiPhraseQuery;
-                            }
-                            if (phraseQuery != null) {
-                                phraseQuery.add(termsAtCurrentPosition.get(0));
-                                return phraseQuery;
-                            }
-                            return new TermQuery(termsAtCurrentPosition.get(0));
-                        default:
-                            if (multiPhraseQuery != null) {
-                                multiPhraseQuery.add(termsAtCurrentPosition.toArray(new Term[termsAtCurrentPosition.size()]));
-                                return multiPhraseQuery;
-                            }
-                            if (phraseQuery != null) {
-                                multiPhraseQuery = new MultiPhraseQuery();
-                                multiPhraseQuery.setSlop(phraseSlop);
-                                if (phraseQuery != null) {
-                                    // TODO copy the phrase query into the multi
-                                    // phrase query
-                                }
-                                return multiPhraseQuery;
-                            }
-                            BooleanQuery bq = new BooleanQuery();
-                            bq.setMinimumNumberShouldMatch(1);
-                            for (Term termAtCurrentPosition : termsAtCurrentPosition) {
-                                bq.add(new TermQuery(termAtCurrentPosition), Occur.SHOULD);
-                            }
-                            return bq;
-                        }
+                        return builder.lastPosition(termsAtCurrentPosition);
                     }
-                    ts = analyzer.tokenStream(field, term.next());
+                    PhraseTerm term = terms.next();
+                    Query queryForTerm = term.query(this);
+                    if (queryForTerm != null) {
+                        builder.query(queryForTerm);
+                        continue;
+                    }
+                    ts = analyzer.tokenStream(field, term.rawString());
                     termAtt = ts.addAttribute(TermToBytesRefAttribute.class);
                     posIncAtt = ts.addAttribute(PositionIncrementAttribute.class);
                     analyzedTerm = termAtt.getBytesRef();
@@ -243,36 +235,7 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                  */
                 Term currentTerm = new Term(field, BytesRef.deepCopyOf(analyzedTerm));
                 if (justStartedANewStream || posIncAtt.getPositionIncrement() != 0) {
-                    /*
-                     * We're at a new position so dump the terms we've
-                     * accumulated.
-                     */
-                    switch (termsAtCurrentPosition.size()) {
-                    case 0:
-                        break;
-                    case 1:
-                        if (multiPhraseQuery != null) {
-                            multiPhraseQuery.add(termsAtCurrentPosition.get(0));
-                        } else {
-                            if (phraseQuery == null) {
-                                phraseQuery = new PhraseQuery();
-                                phraseQuery.setSlop(phraseSlop);
-                            }
-                            phraseQuery.add(termsAtCurrentPosition.get(0));
-                        }
-                        break;
-                    default:
-                        if (multiPhraseQuery == null) {
-                            multiPhraseQuery = new MultiPhraseQuery();
-                            multiPhraseQuery.setSlop(phraseSlop);
-                            if (phraseQuery != null) {
-                                // TODO copy the phrase query into the multi
-                                // phrase query
-                                phraseQuery = null;
-                            }
-                        }
-                        multiPhraseQuery.add(termsAtCurrentPosition.toArray(new Term[termsAtCurrentPosition.size()]));
-                    }
+                    builder.position(termsAtCurrentPosition);
                     termsAtCurrentPosition.clear();
                 }
                 termsAtCurrentPosition.add(currentTerm);
@@ -288,6 +251,149 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                     throw new RuntimeException("Unexpected IOException from Lucene when they shouldn't be possible.", e);
                 }
             }
+        }
+    }
+
+    private class TermOrPhraseOrSpanQueryBuilder {
+        private final int phraseSlop;
+        private PhraseQuery phraseQuery;
+        private MultiPhraseQuery multiPhraseQuery;
+        private List<SpanQuery> spanNear;
+
+        public TermOrPhraseOrSpanQueryBuilder(int phraseSlop) {
+            this.phraseSlop = phraseSlop;
+        }
+
+        /**
+         * The next position can contain any of the matching terms.
+         */
+        private void position(List<Term> terms) {
+            switch (terms.size()) {
+            case 0:
+                return;
+            case 1:
+                if (spanNear != null) {
+                    spanNear.add(new SpanTermQuery(terms.get(0)));
+                    return;
+                }
+                if (multiPhraseQuery != null) {
+                    multiPhraseQuery.add(terms.get(0));
+                    return;
+                }
+                if (phraseQuery == null) {
+                    phraseQuery = new PhraseQuery();
+                    phraseQuery.setSlop(phraseSlop);
+                }
+                phraseQuery.add(terms.get(0));
+                return;
+            default:
+                if (spanNear != null) {
+                    addTermsToSpanNear(terms);
+                    return;
+                }
+                if (multiPhraseQuery == null) {
+                    multiPhraseQuery = new MultiPhraseQuery();
+                    multiPhraseQuery.setSlop(phraseSlop);
+                    if (phraseQuery != null) {
+                        // TODO copy the phrase query into the multi
+                        // phrase query
+                        phraseQuery = null;
+                    }
+                }
+                multiPhraseQuery.add(terms.toArray(new Term[terms.size()]));
+                return;
+            }
+        }
+
+        /**
+         * The next position should match this query.
+         */
+        private void query(Query query) {
+            // TODO be careful with fields and rewrites
+            if (spanNear == null) {
+                spanNear = new ArrayList<>();
+                // TODO copy the current query into the spanNear
+            }
+            if (query instanceof SpanQuery) {
+                spanNear.add((SpanQuery) query);
+                return;
+            }
+            if (query instanceof MultiTermQuery) {
+                MultiTermQuery mquery = (MultiTermQuery) query;
+                mquery.setRewriteMethod(new TopTermsSpanBooleanQueryRewrite(settings.getFuzzyMaxExpansions()));
+                spanNear.add(new SpanMultiTermQueryWrapper<>(mquery));
+                return;
+            }
+            throw new UnsupportedOperationException("Don't know how to convert this query into a span query:  " + query);
+        }
+
+        /**
+         * The last position can contain any of the matching terms. We're done
+         * with this builder - return the query that we built.
+         */
+        public Query lastPosition(List<Term> terms) {
+            /*
+             * There are tons of cases here making this all kinds of complicated
+             * but the general goal is to return the least complicated query we
+             * can. This is more "fun" because in the case this this is a single
+             * position.
+             */
+            switch (terms.size()) {
+            case 0:
+                /*
+                 * Our last position wasn't interesting so lets just return what
+                 * we have - and if we have nothing we'll just return null. That
+                 * happens when you send a stopword or punctuation only through
+                 * the analyzer.
+                 */
+                return multiPhraseQuery != null ? multiPhraseQuery : phraseQuery;
+            case 1:
+                if (spanNear != null) {
+                    spanNear.add(new SpanTermQuery(terms.get(0)));
+                    return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
+                }
+                if (multiPhraseQuery != null) {
+                    multiPhraseQuery.add(terms.get(0));
+                    return multiPhraseQuery;
+                }
+                if (phraseQuery != null) {
+                    phraseQuery.add(terms.get(0));
+                    return phraseQuery;
+                }
+                return new TermQuery(terms.get(0));
+            default:
+                if (spanNear != null) {
+                    addTermsToSpanNear(terms);
+                    return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
+                }
+                if (multiPhraseQuery != null) {
+                    multiPhraseQuery.add(terms.toArray(new Term[terms.size()]));
+                    return multiPhraseQuery;
+                }
+                if (phraseQuery != null) {
+                    multiPhraseQuery = new MultiPhraseQuery();
+                    multiPhraseQuery.setSlop(phraseSlop);
+                    if (phraseQuery != null) {
+                        // TODO copy the phrase query into the multi
+                        // phrase query
+                    }
+                    return multiPhraseQuery;
+                }
+                BooleanQuery bq = new BooleanQuery();
+                bq.setMinimumNumberShouldMatch(1);
+                for (Term termAtCurrentPosition : terms) {
+                    bq.add(new TermQuery(termAtCurrentPosition), Occur.SHOULD);
+                }
+                return bq;
+            }
+        }
+
+        private void addTermsToSpanNear(List<Term> terms) {
+            List<SpanQuery> clauses = new ArrayList<>();
+            for (Term term : terms) {
+                clauses.add(new SpanTermQuery(term));
+            }
+            spanNear.add(new SpanOrQuery(clauses.toArray(new SpanQuery[clauses.size()])));
         }
     }
 }

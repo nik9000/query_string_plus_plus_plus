@@ -26,7 +26,7 @@ public class MultiFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     @Override
-    public Query phraseQuery(List<String> terms, int slop, boolean useQuotedTerm) {
+    public Query phraseQuery(List<PhraseTerm> terms, int slop, boolean useQuotedTerm) {
         BooleanQuery bq = or();
         for (FieldQueryBuilder fieldDelegate : fieldDelegates) {
             bq.add(fieldDelegate.phraseQuery(terms, slop, useQuotedTerm), Occur.SHOULD);
