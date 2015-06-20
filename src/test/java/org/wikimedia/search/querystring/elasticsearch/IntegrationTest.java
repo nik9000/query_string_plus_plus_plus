@@ -208,6 +208,25 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
         assertHitCount(search(builder("auto", "fo*").allowPrefix(false)), 1);
     }
 
+    @Test
+    public void     span() throws InterruptedException, ExecutionException, IOException {
+        buildNiceMapping();
+        indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "foo bar boooom", "auto", "foo bar boooom"));
+        for (String field: new String[] {"foo", "auto"}) {
+            assertHitCount(search(builder(field, "\"foo bar\"")), 1);
+            assertHitCount(search(builder(field, "\"foo ba*\"")), 1);
+            assertHitCount(search(builder(field, "\"ba* foo\"")), 0);
+            assertHitCount(search(builder(field, "\"fo? bar\"")), 1);
+            assertHitCount(search(builder(field, "\"fo? ba*\"")), 1);
+            assertHitCount(search(builder(field, "\"foo bo*\"~1")), 1);
+            assertHitCount(search(builder(field, "\"foo bo*\"")), 0);
+            assertHitCount(search(builder(field, "\"foo b*\"")), 1);
+            assertHitCount(search(builder(field, "\"foo b*\"~1")), 1);
+            assertHitCount(search(builder(field, "\"foo bar boooomm~\"")), 1);
+            assertHitCount(search(builder(field, "\"foo bar boooomm~2\"")), 1);
+        }
+    }
+
     /**
      * This tests using Elasticsearch's _field_name optimization for field
      * exists.

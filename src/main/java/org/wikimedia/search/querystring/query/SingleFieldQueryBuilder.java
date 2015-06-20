@@ -24,6 +24,7 @@ import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper.TopTermsSpanBooleanQueryRewrite;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -200,6 +201,12 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                     PhraseTerm term = terms.next();
                     Query queryForTerm = term.query(this);
                     if (queryForTerm != null) {
+                        /*
+                         * Note that we have to flush the current position or
+                         * stuff gets out of order.
+                         */
+                        builder.position(termsAtCurrentPosition);
+                        termsAtCurrentPosition.clear();
                         builder.query(queryForTerm);
                         continue;
                     }
@@ -308,23 +315,47 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         /**
          * The next position should match this query.
          */
-        private void query(Query query) {
+        public void query(Query query) {
             // TODO be careful with fields and rewrites
             if (spanNear == null) {
                 spanNear = new ArrayList<>();
-                // TODO copy the current query into the spanNear
+                if (multiPhraseQuery != null) {
+                    List<Term[]> terms = multiPhraseQuery.getTermArrays();
+                    for (int i = 0; i < terms.size(); i++) {
+                        Term[] termsAtPosition = terms.get(i);
+                        SpanQuery[] clauses = new SpanQuery[termsAtPosition.length];
+                        for (int j = 0; j < termsAtPosition.length; j++) {
+                            clauses[j] = fixField(new SpanTermQuery(termsAtPosition[j]));
+                        }
+                        spanNear.add(new SpanOrQuery(clauses));
+                    }
+                    multiPhraseQuery = null;
+                } else if (phraseQuery != null) {
+                    Term[] terms = phraseQuery.getTerms();
+                    for (int i = 0; i < terms.length; i++) {
+                        // TODO position increment differences
+                        spanNear.add(fixField(new SpanTermQuery(terms[i])));
+                    }
+                    phraseQuery = null;
+                }
             }
+            spanNear.add(fixField(spanify(query)));
+        }
+
+        private SpanQuery spanify(Query query) {
             if (query instanceof SpanQuery) {
-                spanNear.add((SpanQuery) query);
-                return;
+                return (SpanQuery) query;
             }
             if (query instanceof MultiTermQuery) {
                 MultiTermQuery mquery = (MultiTermQuery) query;
                 mquery.setRewriteMethod(new TopTermsSpanBooleanQueryRewrite(settings.getFuzzyMaxExpansions()));
-                spanNear.add(new SpanMultiTermQueryWrapper<>(mquery));
-                return;
+                return new SpanMultiTermQueryWrapper<>(mquery);
             }
-            throw new UnsupportedOperationException("Don't know how to convert this query into a span query:  " + query);
+            if (query instanceof TermQuery) {
+                return new SpanTermQuery(((TermQuery) query).getTerm());
+            }
+            throw new UnsupportedOperationException("Don't know how to convert this query into a span query of type " + query.getClass()
+                    + ":  " + query);
         }
 
         /**
@@ -346,10 +377,13 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                  * happens when you send a stopword or punctuation only through
                  * the analyzer.
                  */
+                if (spanNear != null) {
+                    return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
+                }
                 return multiPhraseQuery != null ? multiPhraseQuery : phraseQuery;
             case 1:
                 if (spanNear != null) {
-                    spanNear.add(new SpanTermQuery(terms.get(0)));
+                    spanNear.add(fixField(new SpanTermQuery(terms.get(0))));
                     return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
                 }
                 if (multiPhraseQuery != null) {
@@ -391,9 +425,21 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
         private void addTermsToSpanNear(List<Term> terms) {
             List<SpanQuery> clauses = new ArrayList<>();
             for (Term term : terms) {
-                clauses.add(new SpanTermQuery(term));
+                clauses.add(fixField(new SpanTermQuery(term)));
             }
             spanNear.add(new SpanOrQuery(clauses.toArray(new SpanQuery[clauses.size()])));
+        }
+
+        /**
+         * Span queries must work around the same field - but we are pretty free
+         * with substituting precise and prefix, etc.
+         */
+        private SpanQuery fixField(SpanQuery query) {
+            // TODO what if positions don't line up
+            if (query.getField().equals(field.getStandard())) {
+                return query;
+            }
+            return new FieldMaskingSpanQuery(query, field.getStandard());
         }
     }
 }

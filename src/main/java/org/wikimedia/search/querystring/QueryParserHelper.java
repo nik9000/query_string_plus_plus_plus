@@ -5,8 +5,8 @@ import java.util.List;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
 import org.antlr.v4.runtime.BufferedTokenStream;
-import org.antlr.v4.runtime.RuleContext;
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
 import org.apache.lucene.search.BooleanClause;
 import org.apache.lucene.search.BooleanClause.Occur;
 import org.apache.lucene.search.BooleanQuery;
@@ -298,7 +298,7 @@ public class QueryParserHelper {
 
         @Override
         public PhraseTerm visitPrefix(PrefixContext ctx) {
-            return new PrefixPhraseTerm(getText(ctx));
+            return new PrefixPhraseTerm(getText(ctx.TERM()));
         }
 
         @Override
@@ -308,10 +308,18 @@ public class QueryParserHelper {
 
         @Override
         public PhraseTerm visitFuzzy(FuzzyContext ctx) {
-            return new FuzzyPhraseTerm(getText(ctx));
+            float fuzziness = Float.NEGATIVE_INFINITY;
+            if (ctx.fuzziness != null) {
+                if (ctx.fuzziness.basicTerm() != null) {
+                    // This looks like garbage in place of the slop. Icky.
+                    return new SimpleStringPhraseTerm(ctx.getText());
+                }
+                fuzziness = Float.parseFloat(ctx.fuzziness.getText());
+            }
+            return new FuzzyPhraseTerm(getText(ctx.TERM()), fuzziness);
         }
 
-        private String getText(RuleContext ctx) {
+        private String getText(ParseTree ctx) {
             return ctx.getText().replace("\\\"", "\"");
         }
     }

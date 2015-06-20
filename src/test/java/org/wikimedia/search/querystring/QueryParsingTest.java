@@ -45,6 +45,7 @@ import org.apache.lucene.search.PrefixQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.WildcardQuery;
+import org.apache.lucene.search.spans.FieldMaskingSpanQuery;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper;
 import org.apache.lucene.search.spans.SpanMultiTermQueryWrapper.TopTermsSpanBooleanQueryRewrite;
 import org.apache.lucene.search.spans.SpanNearQuery;
@@ -158,7 +159,8 @@ public class QueryParsingTest {
                 { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, //
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
                 { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
-                { span("foo*", "precise_field:bar"), "\"foo* bar\"" }, //
+                { span("field", "foo*", "precise_field:bar"), "\"foo* bar\"" }, //
+                { span("field", "precise_field:foo", "bar*"), "\"foo bar*\"" }, //
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
@@ -252,6 +254,9 @@ public class QueryParsingTest {
                 // Synonyms
                 { or("foo", "bar"), "foo", "standardAnalyzer=synonym" }, //
                 { phrase(new Object[] { "foo", "bar" }, "baz"), "\"foo baz\"", "preciseAnalyzer=synonym" }, //
+                { span("field", new Object[] { "precise_field:foo", "precise_field:bar" }, "baz*"), "\"foo baz*\"", "preciseAnalyzer=synonym" }, //
+                { span("field", "baz*", new Object[] { "precise_field:foo", "precise_field:bar" }), "\"baz* foo\"", "preciseAnalyzer=synonym" }, //
+                { span("field", "foo*", "precise_field:baz"), "\"foo* baz\"", "preciseAnalyzer=synonym" }, //
                 // Regexes are just terms when disallowed
                 { query("foo"), "/foo./", "allowRegex=false" },//
                 { new TermQuery(new Term("field", "/foo./")), "/foo./", "allowRegex=false, standardAnalyzer=keyword" },//
@@ -527,7 +532,7 @@ public class QueryParsingTest {
         return new Term("precise_field", s);
     }
 
-    private static Query span(Object... terms) {
+    private static Query span(String field, Object... terms) {
         List<SpanQuery> spanNear = new ArrayList<>();
         int slop = 0;
         int i = 0;
@@ -547,14 +552,26 @@ public class QueryParsingTest {
             if (t instanceof Object[]) {
                 List<SpanQuery> clauses = new ArrayList<>();
                 for (Object o : (Object[]) t) {
-                    clauses.add(spanify(query(o)));
+                    clauses.add(spanify(field, query(o)));
                 }
                 spanNear.add(new SpanOrQuery(clauses.toArray(new SpanQuery[clauses.size()])));
                 continue;
             }
-            spanNear.add(spanify(query(t)));
+            spanNear.add(spanify(field, query(t)));
         }
-        return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), slop, true, false);
+        try {
+            return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), slop, true, false);
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Can't build the span query for " + Arrays.deepToString(terms), e);
+        }
+    }
+
+    private static SpanQuery spanify(String field, Query q) {
+        SpanQuery span = spanify(q);
+        if (span.getField().equals(field)) {
+            return span;
+        }
+        return new FieldMaskingSpanQuery(span, field);
     }
 
     private static SpanQuery spanify(Query q) {

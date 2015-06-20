@@ -4,12 +4,15 @@ import org.apache.lucene.search.Query;
 import org.wikimedia.search.querystring.query.FieldQueryBuilder;
 
 public class FuzzyPhraseTerm extends AbstractPhraseTerm {
-    public FuzzyPhraseTerm(String string) {
+    private final float fuzziness;
+
+    public FuzzyPhraseTerm(String string, float fuzziness) {
         super(string);
+        this.fuzziness = fuzziness;
     }
 
     @Override
     public Query query(FieldQueryBuilder b) {
-        return b.fuzzyQuery(rawString(), 0);
+        return b.fuzzyQuery(rawString(), fuzziness);
     }
 }

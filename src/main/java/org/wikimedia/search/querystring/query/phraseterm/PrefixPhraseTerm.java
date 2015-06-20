@@ -10,6 +10,6 @@ public class PrefixPhraseTerm extends AbstractPhraseTerm {
 
     @Override
     public Query query(FieldQueryBuilder b) {
-        return b.prefixQuery(rawString().substring(0, rawString().length() - 1));
+        return b.prefixQuery(rawString());
     }
 }
