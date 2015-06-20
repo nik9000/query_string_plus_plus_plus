@@ -224,6 +224,9 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
             assertHitCount(search(builder(field, "\"foo b*\"~1")), 1);
             assertHitCount(search(builder(field, "\"foo bar boooomm~\"")), 1);
             assertHitCount(search(builder(field, "\"foo bar boooomm~2\"")), 1);
+            assertHitCount(search(builder(field, "\"*oo bar\"").allowLeadingWildcard(true)), 1);
+            // Auto doesn't need a leading wildcard because its uses a reverse field
+            assertHitCount(search(builder(field, "\"*oo bar\"").allowLeadingWildcard(false)), field.equals("auto") ? 1 : 0);
         }
     }
 
