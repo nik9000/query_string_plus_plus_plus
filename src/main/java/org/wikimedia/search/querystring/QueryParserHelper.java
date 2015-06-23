@@ -2,9 +2,13 @@ package org.wikimedia.search.querystring;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import org.antlr.v4.runtime.ANTLRInputStream;
+import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.BufferedTokenStream;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.apache.lucene.search.BooleanClause;
@@ -22,6 +26,7 @@ import org.wikimedia.search.querystring.QueryParser.FieldExistsContext;
 import org.wikimedia.search.querystring.QueryParser.FieldedContext;
 import org.wikimedia.search.querystring.QueryParser.FieldsContext;
 import org.wikimedia.search.querystring.QueryParser.FuzzyContext;
+import org.wikimedia.search.querystring.QueryParser.JustFieldsContext;
 import org.wikimedia.search.querystring.QueryParser.MustContext;
 import org.wikimedia.search.querystring.QueryParser.MustNotContext;
 import org.wikimedia.search.querystring.QueryParser.OrContext;
@@ -44,7 +49,12 @@ import org.wikimedia.search.querystring.query.phraseterm.WildcardPhraseTerm;
 
 public class QueryParserHelper {
     public static List<FieldReference> parseFields(String str) {
-        return fieldsFromContext(buildParser(str).justFields().fields());
+        QueryParser parser = buildParser(str);
+        ErrorListener errorListener = new ErrorListener();
+        parser.addErrorListener(errorListener);
+        JustFieldsContext fields = parser.justFields();
+        errorListener.throwErrorIfAnyRecorded();
+        return fieldsFromContext(fields.fields());
     }
 
     private static final ESLogger log = ESLoggerFactory.getLogger(QueryParserHelper.class.getPackage().getName());
@@ -62,7 +72,10 @@ public class QueryParserHelper {
 
     public Query parse(String str) {
         QueryParser parser = buildParser(str);
+        ErrorListener errorListener = new ErrorListener();
+        parser.addErrorListener(errorListener);
         QueryContext query = parser.query();
+        errorListener.throwErrorIfAnyRecorded();
         if (log.isTraceEnabled()) {
             log.trace("Parse tree: {}", query.toStringTree(parser));
         }
@@ -93,7 +106,7 @@ public class QueryParserHelper {
         QueryLexer l = new QueryLexer(new ANTLRInputStream(toParse));
         QueryParser p = new QueryParser(new BufferedTokenStream(l));
         // We don't want the console error listener....
-        // p.removeErrorListeners();
+        p.removeErrorListeners();
         if (log.isTraceEnabled()) {
             p.addParseListener(new TraceParseTreeListener(p));
         }
@@ -201,11 +214,6 @@ public class QueryParserHelper {
             if (ctx.boost == null) {
                 return visit(ctx.term());
             }
-            if (ctx.boost.basicTerm() != null) {
-                // This looks like garbage instead of a useful boost - lets just
-                // pretend this is a term.
-                return wrap(builder.termQuery(ctx.getText()));
-            }
             BooleanClause term = visit(ctx.term());
             term.getQuery().setBoost(Float.parseFloat(ctx.boost.getText()));
             return term;
@@ -241,10 +249,6 @@ public class QueryParserHelper {
         public BooleanClause visitFuzzy(FuzzyContext ctx) {
             float fuzziness = Float.NEGATIVE_INFINITY;
             if (ctx.fuzziness != null) {
-                if (ctx.fuzziness.basicTerm() != null) {
-                    // This looks like garbage in place of the slop. Icky.
-                    return wrap(builder.termQuery(ctx.getText()));
-                }
                 fuzziness = Float.parseFloat(ctx.fuzziness.getText());
             }
             return wrap(builder.fuzzyQuery(ctx.TERM().getText(), fuzziness));
@@ -310,10 +314,6 @@ public class QueryParserHelper {
         public PhraseTerm visitFuzzy(FuzzyContext ctx) {
             float fuzziness = Float.NEGATIVE_INFINITY;
             if (ctx.fuzziness != null) {
-                if (ctx.fuzziness.basicTerm() != null) {
-                    // This looks like garbage in place of the slop. Icky.
-                    return new SimpleStringPhraseTerm(ctx.getText());
-                }
                 fuzziness = Float.parseFloat(ctx.fuzziness.getText());
             }
             return new FuzzyPhraseTerm(getText(ctx.TERM()), fuzziness);
@@ -347,5 +347,26 @@ public class QueryParserHelper {
             fields.add(new FieldReference(field.fieldName().getText(), boost));
         }
         return fields;
+    }
+
+    private static class ErrorListener extends BaseErrorListener {
+        private ParseErrorException firstException;
+
+        public void throwErrorIfAnyRecorded() {
+            if (firstException != null) {
+                throw firstException;
+            }
+        }
+
+        @Override
+        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line, int charPositionInLine, String msg,
+                RecognitionException e) {
+            ParseErrorException exception = new ParseErrorException(String.format(Locale.ROOT, "Syntax error at line %s position %s: %s ", line, charPositionInLine, msg), e);
+            if (firstException == null) {
+                firstException = exception;
+            } else {
+                log.warn("More than one syntax error parsing query. Throwing first one and logging this one.", exception);
+            }
+        }
     }
 }

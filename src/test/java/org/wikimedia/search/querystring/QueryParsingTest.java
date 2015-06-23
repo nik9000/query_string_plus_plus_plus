@@ -88,6 +88,7 @@ public class QueryParsingTest {
         for (Object[] param : new Object[][] {
                 { query("foo"), "foo" }, //
                 { query("foo"), "foo   " }, //
+                { query("foo"), "   foo" }, //
                 { newMatchAllQuery(), "" }, //
                 { newMatchAllQuery(), "   " }, //
                 { newMatchNoDocsQuery(), "", "empty=matchNone" }, //
@@ -195,9 +196,9 @@ public class QueryParsingTest {
                 { query("pi*kl?"), "pi*kl?" }, //
                 { query("pi\\*kl?"), "pi\\*kl?" }, //
                 { and("pick?e", "catap?lt"), "pick?e catap?lt" }, //
-                // This next two are slightly different than Cirrus
-                { query("precise_field:10.7227"), "\"10.7227\"yay\"" }, //
-                { query("precise_field:7227"), "\"7227\"yay\"" }, //
+                { phrase("10.7227", "yay"), "\"10.7227\"yay\"" }, //
+                { phrase("7227", "yay"), "\"7227\"yay\"" }, //
+                { phrase("field:7227", "field:yai"), "7227\"yay" }, //
                 { phrase("precise_field:10.1093", "precise_field:acprof:oso", "precise_field:9780195314250.003.0001"),
                         "\"10.1093/acprof:oso/9780195314250.003.0001\"" }, //
                 { phrase("field:10.1093", "field:acprof:oso", "field:9780195314250.003.0001"), "10.1093/acprof:oso/9780195314250.003.0001" }, //
@@ -208,9 +209,9 @@ public class QueryParsingTest {
                         "\"two words\" AND pickles AND \"ffnonesenseword catapult\"" }, //
                 { or(phrase("two", "words"), "pickl", phrase("ffnonesenseword", "catapult")),
                         "\"two words\" OR pickles OR \"ffnonesenseword catapult\"" }, //
-                // The next two are also different than Cirrus
-                { phrase("field:foo", "field:bar"), "\"foo bar\"~garbage" }, //
-                { and(phrase("field:foo", "field:bar"), "cat"), "\"foo bar\"~garbage cat" }, //
+                { phrase("foo", "bar", "garbage"), "\"foo bar\"~garbage" }, //
+                { phrase("foo", "bar", "garbage", "bort"), "\"foo bar\"~garbage bort" }, //
+                { and(phrase("foo", "bar", "garbage"), "cat"), "\"foo bar\"~garbage\" cat" }, //
                 { or("a:foo", "b:foo"), "foo", "fields=a|b" }, //
                 { and(or("a:foo", "b:foo"), or("a:bar", "b:bar")), "foo bar", "fields=a|b" }, //
                 { or(phrase("precise_a:foo", "precise_a:bar"), phrase("precise_b:foo", "precise_b:bar")), "\"foo bar\"", "fields=a|b" }, //
@@ -254,9 +255,13 @@ public class QueryParsingTest {
                 // Synonyms
                 { or("foo", "bar"), "foo", "standardAnalyzer=synonym" }, //
                 { phrase(new Object[] { "foo", "bar" }, "baz"), "\"foo baz\"", "preciseAnalyzer=synonym" }, //
-                { span("field", new Object[] { "precise_field:foo", "precise_field:bar" }, "baz*"), "\"foo baz*\"", "preciseAnalyzer=synonym" }, //
-                { span("field", "baz*", new Object[] { "precise_field:foo", "precise_field:bar" }), "\"baz* foo\"", "preciseAnalyzer=synonym" }, //
+                { span("field", new Object[] { "precise_field:foo", "precise_field:bar" }, "baz*"), "\"foo baz*\"",
+                        "preciseAnalyzer=synonym" }, //
+                { span("field", "baz*", new Object[] { "precise_field:foo", "precise_field:bar" }), "\"baz* foo\"",
+                        "preciseAnalyzer=synonym" }, //
                 { span("field", "foo*", "precise_field:baz"), "\"foo* baz\"", "preciseAnalyzer=synonym" }, //
+                { span("field", "foooo~1", "precise_field:baz"), "\"foooo~ baz\"", "preciseAnalyzer=synonym" }, //
+                { span("field", "precise_field:baz", "foooo~1"), "\"baz foooo~\"", "preciseAnalyzer=synonym" }, //
                 // Regexes are just terms when disallowed
                 { query("foo"), "/foo./", "allowRegex=false" },//
                 { new TermQuery(new Term("field", "/foo./")), "/foo./", "allowRegex=false, standardAnalyzer=keyword" },//
@@ -266,6 +271,11 @@ public class QueryParsingTest {
                 { query("/cat|dog|crumpet/[3]"), "/cat|dog|crumpet/" },//
                 // Regexes are fine even without the ngram field
                 { query("another:/foo./"), "another:/foo./" },//
+                // Fun errors found by random querying
+                { query("foo"), "foo\"" },//
+                { query("6?"), "6?" },//
+                { query("6"), "6(" },//
+                { phrase("field:6", "field:7"), "6(7)" },//
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();
@@ -673,7 +683,7 @@ public class QueryParsingTest {
         return query;
     }
 
-    private static Analyzer parseAnalyzer(String name) {
+    public static Analyzer parseAnalyzer(String name) {
         switch (name) {
         case "english":
             return new EnglishAnalyzer();

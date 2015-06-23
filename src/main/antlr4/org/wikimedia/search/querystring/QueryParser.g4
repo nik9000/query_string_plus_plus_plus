@@ -1,7 +1,7 @@
 parser grammar QueryParser;
 options { tokenVocab=QueryLexer; }
 
-query     : infixOp? WS? EOF;
+query     : WS? infixOp? WS? EOF;
 justFields : fields EOF;
 
 infixOp   : unmarked;
@@ -12,22 +12,25 @@ prefixOp  : must | mustNot | fielded;
 must      : PLUS WS? fielded;
 mustNot   : MINUS WS? fielded;
 fielded   : (fields COLON)? boosted;
-boosted   : term (CARET boost=decimalPlease)?;
-term      : fuzzy | prefix | fieldExists | wildcard | paren | phrase | regex | basicTerm;
-fuzzy     : TERM TWIDDLE fuzziness=decimalPlease?;
+boosted   : term (CARET boost=number)?;
+term      : fuzzy | prefix | fieldExists | phrase | paren | regex | wildcard | basicTerm;
+fuzzy     : TERM TWIDDLE fuzziness=number?;
 prefix    : TERM STAR;
 fieldExists : STAR;
-wildcard  : TERM? (STAR | QUESTM) (TERM | STAR | QUESTM)*;
+wildcard  : basicTerm? (STAR | QUESTM) (basicTerm | STAR | QUESTM)*;
 paren     : LPAREN WS? infixOp WS? RPAREN;
 phrase    : QUOTE (phraseTerm (WS phraseTerm)*)? ((QUOTE (TWIDDLE slop=INTEGER)? useNormalTerm=TWIDDLE?) | EOF);
 phraseTerm : fuzzy | prefix | fieldExists | wildcard | basicTerm;
 regex     : SLASH content=regexContent? SLASH;
 regexContent : basicTerm (WS basicTerm)*;
 basicTerm : (basicTermPart)+?;
-basicTermPart : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | STAR | COMMA | DECIMAL | INTEGER | COLON | SLASH;
+basicTermPart : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE | COMMA | DECIMAL | INTEGER | COLON | SLASH
+          | QUOTE    // Term with a quote in it - its not a phrase, just an "I rolled my face on the keyboard" kind of term.
+          | LPAREN   // Term containing a parenthesis - not a parenthetical term, just some term that actually contains the paren. Like a product name.
+          | RPAREN
+          | CARET;   // Term containing a caret rather than a proper boost
 
-
-decimalPlease   : INTEGER | DECIMAL | basicTerm; // Basic term is required to handle weird queries - those aren't valid but we have to degrade.
+number    : INTEGER | DECIMAL;
 fields    : field (COMMA WS? field)*;
-field     : fieldName (CARET boost=decimalPlease)?;
+field     : fieldName (CARET boost=number)?;
 fieldName : TERM (DOT TERM)*;
