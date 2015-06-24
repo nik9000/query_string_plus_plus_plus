@@ -26,7 +26,7 @@ import com.carrotsearch.randomizedtesting.annotations.Repeat;
  * Parses random queries and verifies that they don't blow up.
  */
 @RunWith(RandomizedRunner.class)
-//@Seed("871F456299DABFEB:5396FE5FD020C19F")
+//@Seed("BD9334D4E41F3B7A:FBB7C267FBFD54A5")
 public class RandomQueryParsingTest extends RandomizedTest {
     private static final ESLogger log = ESLoggerFactory.getLogger(RandomQueryParsingTest.class.getPackage().getName());
     @Test
@@ -43,7 +43,7 @@ public class RandomQueryParsingTest extends RandomizedTest {
         usages.add(usage);
         DefaultingQueryBuilder builder = new DefaultingQueryBuilder(new DefaultingQueryBuilder.Settings(), new BasicQueryBuilder(
                 new BasicQueryBuilder.Settings(), usages));
-        String str = TestUtil.randomRealisticUnicodeString(getRandom(), 100);
+        String str = TestUtil.randomRealisticUnicodeString(getRandom(), 1000);
         log.info("Parsing \"{}\"", str);
         Query parsed = new QueryParserHelper(fieldsHelper, builder, true, true).parse(str);
         assertNotNull(parsed);
