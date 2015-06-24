@@ -276,6 +276,8 @@ public class QueryParsingTest {
                 { query("6?"), "6?" },//
                 { query("6"), "6(" },//
                 { phrase("field:6", "field:7"), "6(7)" },//
+                { query("precise_field:test"), "\".test\"" },//
+                { query("precise_field:test"), "\". test\"" },//
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();

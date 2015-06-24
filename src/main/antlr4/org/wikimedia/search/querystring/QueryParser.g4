@@ -28,7 +28,8 @@ basicTermPart : TERM | OR | SHORT_OR | AND | SHORT_AND | PLUS | MINUS | TWIDDLE 
           | QUOTE    // Term with a quote in it - its not a phrase, just an "I rolled my face on the keyboard" kind of term.
           | LPAREN   // Term containing a parenthesis - not a parenthetical term, just some term that actually contains the paren. Like a product name.
           | RPAREN
-          | CARET;   // Term containing a caret rather than a proper boost
+          | CARET    // Term containing a caret rather than a proper boost
+          | DOT;     // Term containing a dot rather than a proper field name
 
 number    : INTEGER | DECIMAL;
 fields    : field (COMMA WS? field)*;
