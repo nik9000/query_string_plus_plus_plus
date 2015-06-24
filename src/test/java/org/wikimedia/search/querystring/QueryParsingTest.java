@@ -160,8 +160,8 @@ public class QueryParsingTest {
                 { phrase(20, "foo", "bar"), "\"foo bar\"~300" }, //
                 { phrase("field:foo", "field:bar"), "\"foo bar\"~" }, //
                 { phrase(1, "field:foo", "field:bar"), "\"foo bar\"~1~" }, //
-                { span("field", "foo*", "precise_field:bar"), "\"foo* bar\"" }, //
-                { span("field", "precise_field:foo", "bar*"), "\"foo bar*\"" }, //
+                { span("precise_field", "foo*", "precise_field:bar"), "\"foo* bar\"" }, //
+                { span("precise_field", "precise_field:foo", "bar*"), "\"foo bar*\"" }, //
                 { and(clause("foo", Occur.MUST_NOT)), "-foo" }, //
                 { and(clause(phrase("foo", "bar"), Occur.MUST_NOT)), "-\"foo bar\"" }, //
                 { and("foo", clause(phrase("bar", "baz"), Occur.MUST_NOT)), "foo -\"bar baz\"" }, //
@@ -255,13 +255,13 @@ public class QueryParsingTest {
                 // Synonyms
                 { or("foo", "bar"), "foo", "standardAnalyzer=synonym" }, //
                 { phrase(new Object[] { "foo", "bar" }, "baz"), "\"foo baz\"", "preciseAnalyzer=synonym" }, //
-                { span("field", new Object[] { "precise_field:foo", "precise_field:bar" }, "baz*"), "\"foo baz*\"",
+                { span("precise_field", new Object[] { "precise_field:foo", "precise_field:bar" }, "baz*"), "\"foo baz*\"",
                         "preciseAnalyzer=synonym" }, //
-                { span("field", "baz*", new Object[] { "precise_field:foo", "precise_field:bar" }), "\"baz* foo\"",
+                { span("precise_field", "baz*", new Object[] { "precise_field:foo", "precise_field:bar" }), "\"baz* foo\"",
                         "preciseAnalyzer=synonym" }, //
-                { span("field", "foo*", "precise_field:baz"), "\"foo* baz\"", "preciseAnalyzer=synonym" }, //
-                { span("field", "foooo~1", "precise_field:baz"), "\"foooo~ baz\"", "preciseAnalyzer=synonym" }, //
-                { span("field", "precise_field:baz", "foooo~1"), "\"baz foooo~\"", "preciseAnalyzer=synonym" }, //
+                { span("precise_field", "foo*", "precise_field:baz"), "\"foo* baz\"", "preciseAnalyzer=synonym" }, //
+                { span("precise_field", "foooo~1", "precise_field:baz"), "\"foooo~ baz\"", "preciseAnalyzer=synonym" }, //
+                { span("precise_field", "precise_field:baz", "foooo~1"), "\"baz foooo~\"", "preciseAnalyzer=synonym" }, //
                 // Regexes are just terms when disallowed
                 { query("foo"), "/foo./", "allowRegex=false" },//
                 { new TermQuery(new Term("field", "/foo./")), "/foo./", "allowRegex=false, standardAnalyzer=keyword" },//
@@ -278,6 +278,8 @@ public class QueryParsingTest {
                 { phrase("field:6", "field:7"), "6(7)" },//
                 { query("precise_field:test"), "\".test\"" },//
                 { query("precise_field:test"), "\". test\"" },//
+                // This one was adding the term queries using the incorrect fields
+                { span("precise_field", "x*", "precise_field:x", "precise_field:x"), "\"x* x x\"" },//
         }) {
             Query expected = (Query) param[0];
             String toParse = param[1].toString();

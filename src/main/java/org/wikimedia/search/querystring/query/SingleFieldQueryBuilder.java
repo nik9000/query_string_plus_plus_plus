@@ -32,6 +32,7 @@ import org.apache.lucene.search.spans.SpanOrQuery;
 import org.apache.lucene.search.spans.SpanQuery;
 import org.apache.lucene.search.spans.SpanTermQuery;
 import org.apache.lucene.util.BytesRef;
+import org.elasticsearch.common.base.Joiner;
 import org.elasticsearch.common.logging.ESLogger;
 import org.elasticsearch.common.logging.ESLoggerFactory;
 import org.elasticsearch.index.mapper.internal.FieldNamesFieldMapper;
@@ -180,7 +181,7 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
          * term should become a term query instead of a single node phrase query
          * or anything similarly complicated.
          */
-        TermOrPhraseOrSpanQueryBuilder builder = new TermOrPhraseOrSpanQueryBuilder(phraseSlop);
+        TermOrPhraseOrSpanQueryBuilder builder = new TermOrPhraseOrSpanQueryBuilder(field, phraseSlop);
         TokenStream ts = null;
         try {
             TermToBytesRefAttribute termAtt = null;
@@ -262,12 +263,14 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
     }
 
     private class TermOrPhraseOrSpanQueryBuilder {
+        private final String fieldName;
         private final int phraseSlop;
         private PhraseQuery phraseQuery;
         private MultiPhraseQuery multiPhraseQuery;
         private List<SpanQuery> spanNear;
 
-        public TermOrPhraseOrSpanQueryBuilder(int phraseSlop) {
+        public TermOrPhraseOrSpanQueryBuilder(String fieldName, int phraseSlop) {
+            this.fieldName = fieldName;
             this.phraseSlop = phraseSlop;
         }
 
@@ -280,7 +283,7 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
                 return;
             case 1:
                 if (spanNear != null) {
-                    spanNear.add(new SpanTermQuery(terms.get(0)));
+                    spanNear.add(fixField(new SpanTermQuery(terms.get(0))));
                     return;
                 }
                 if (multiPhraseQuery != null) {
@@ -384,7 +387,18 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
             case 1:
                 if (spanNear != null) {
                     spanNear.add(fixField(new SpanTermQuery(terms.get(0))));
-                    return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
+                    try {
+                        return new SpanNearQuery(spanNear.toArray(new SpanQuery[spanNear.size()]), phraseSlop, true, false);
+                    } catch (IllegalArgumentException e) {
+                        if (!e.getMessage().equals("Clauses must have same field.")) {
+                            throw e;
+                        }
+                        /*
+                         * The error message Lucene throws here isn't great so
+                         * we try to enrich it.
+                         */
+                        throw new IllegalArgumentException("Bad span query. Clauses:  " + Joiner.on(' ').join(spanNear), e);
+                    }
                 }
                 if (multiPhraseQuery != null) {
                     multiPhraseQuery.add(terms.get(0));
@@ -436,10 +450,10 @@ public class SingleFieldQueryBuilder implements FieldQueryBuilder {
          */
         private SpanQuery fixField(SpanQuery query) {
             // TODO what if positions don't line up
-            if (query.getField().equals(field.getStandard())) {
+            if (query.getField().equals(fieldName)) {
                 return query;
             }
-            return new FieldMaskingSpanQuery(query, field.getStandard());
+            return new FieldMaskingSpanQuery(query, fieldName);
         }
     }
 }
