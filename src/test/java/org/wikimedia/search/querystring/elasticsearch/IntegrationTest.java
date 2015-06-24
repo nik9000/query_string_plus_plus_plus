@@ -209,7 +209,7 @@ public class IntegrationTest extends ElasticsearchIntegrationTest {
     }
 
     @Test
-    public void     span() throws InterruptedException, ExecutionException, IOException {
+    public void span() throws InterruptedException, ExecutionException, IOException {
         buildNiceMapping();
         indexRandom(true, client().prepareIndex("test", "test", "1").setSource("foo", "foo bar boooom", "auto", "foo bar boooom"));
         for (String field: new String[] {"foo", "auto"}) {
