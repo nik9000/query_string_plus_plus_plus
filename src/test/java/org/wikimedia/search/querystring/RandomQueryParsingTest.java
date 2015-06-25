@@ -17,6 +17,7 @@ import org.wikimedia.search.querystring.query.BasicQueryBuilder;
 import org.wikimedia.search.querystring.query.DefaultingQueryBuilder;
 import org.wikimedia.search.querystring.query.FieldReference;
 import org.wikimedia.search.querystring.query.FieldUsage;
+import org.wikimedia.search.querystring.query.RegexQueryBuilder.WikimediaExtraRegexQueryBuilder;
 
 import com.carrotsearch.randomizedtesting.RandomizedRunner;
 import com.carrotsearch.randomizedtesting.RandomizedTest;
@@ -38,11 +39,20 @@ public class RandomQueryParsingTest extends RandomizedTest {
         List<FieldUsage> usages = new ArrayList<>();
         String field = "foo";
         FieldReference reference = fieldReference(field);
-        FieldUsage usage = new FieldUsage(reference.getName(), standardAnalyzer, "precise_" + reference.getName(), preciseAnalyzer, null,
-                null, null, null, null, 1, 1);
+        String preciseName = frequently() ? "precise_" + reference.getName() : null;
+        String reversePreciseName = rarely() ? "reverse_precise_" + reference.getName() : null;
+        String prefixPreciseName = rarely() ? "reverse_precise_" + reference.getName() : null;
+        String ngramName = rarely() ? "ngram_" + reference.getName() : null;
+        FieldUsage usage = new FieldUsage(reference.getName(), standardAnalyzer, preciseName, preciseAnalyzer, reversePreciseName,
+                preciseAnalyzer, prefixPreciseName, preciseAnalyzer, ngramName, 3, 1);
         usages.add(usage);
+        BasicQueryBuilder.Settings settings = new BasicQueryBuilder.Settings();
+        settings.setAllowLeadingWildcard(rarely());
+        settings.setAllowPrefix(frequently());
+        settings.setMaxPhraseSlop(between(0, 10));
+        settings.setRegexQueryBuilder(ngramName == null ? null : new WikimediaExtraRegexQueryBuilder());
         DefaultingQueryBuilder builder = new DefaultingQueryBuilder(new DefaultingQueryBuilder.Settings(), new BasicQueryBuilder(
-                new BasicQueryBuilder.Settings(), usages));
+                settings, usages));
         String str = TestUtil.randomRealisticUnicodeString(getRandom(), 1000);
         log.info("Parsing \"{}\"", str);
         Query parsed = new QueryParserHelper(fieldsHelper, builder, true, true).parse(str);
